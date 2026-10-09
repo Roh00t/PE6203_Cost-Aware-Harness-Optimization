@@ -85,14 +85,43 @@ Dev split: 009-repair-org-chart-layout, 056-move-textbox-left, 020-calculate-per
 ```bash
 git clone https://github.com/facebookresearch/TUA-Bench data/TUA-Bench
 git -C data/TUA-Bench checkout 3497fd320abcafaf4797424192c891a593fd7964
-(cd data/TUA-Bench && uv sync)
-python3 scripts/extract_families.py      # regenerates configs/task_families.json
-python3 scripts/sample_tasks.py          # regenerates configs/task_subset.json + *.args
-uv run --project data/TUA-Bench python scripts/check_harbor_filter.py configs/eval_tasks.args
+uv sync --frozen                          # repo env: Python 3.12 + harbor==0.6.3
+python3 scripts/extract_families.py       # regenerates configs/task_families.json
+python3 scripts/sample_tasks.py           # regenerates configs/task_subset.json + *.args
+uv run python scripts/check_harbor_filter.py configs/eval_tasks.args
 ```
 
-Run a configuration on the subset (from `data/TUA-Bench`):
+---
+
+## Running Locally
+
+**One-time setup**
+
+1. Docker Desktop → Settings → Resources: **Memory ≥ 10 GB** (the Scientific & Engineering tasks request 8 GB each), CPUs ≥ 6, and enough disk for the task images.
+2. `cp .env.example .env` and set `OPENROUTER_API_KEY`. Use a dedicated key with a credit limit.
+3. `(cd data/TUA-Bench && uv run setup-env)` downloads the task assets.
+
+**Run** (host, recommended):
 
 ```bash
-uv run harbor run -p tasks $(cat ../../configs/eval_tasks.args) -a oracle -o jobs/oracle-gate
+scripts/harbor_run.sh --agent oracle --job-name oracle-gate
 ```
+
+**Run** (same toolchain in a container, from the repo root):
+
+```bash
+docker compose run --rm harness scripts/harbor_run.sh --agent oracle --job-name oracle-gate
+```
+
+`scripts/harbor_run.sh` refuses to start unless all of these hold:
+
+* the TUA-Bench checkout matches the subset's commit and has no modified tasks or verifiers;
+* Harbor resolves exactly the subset's tasks;
+* the Docker VM has enough memory for the largest task at the chosen concurrency.
+
+It then overrides two Harbor defaults:
+
+* `--n-concurrent 1` instead of 4. Four 8 GB trials would run out of memory on a 16 GB machine.
+* `--no-delete` instead of `--delete`. Harbor's default deletes each task image after every trial, so every configuration would rebuild every image.
+
+Task images are built for `linux/amd64` on every machine. Several images are amd64-only, and using one architecture keeps arm64 Macs and x86 teammates on identical environments. Set `SPLIT=dev` for harness development and model pilots. The eval split is for recorded runs only.

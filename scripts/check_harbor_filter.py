@@ -3,9 +3,9 @@
 
 Uses Harbor's own DatasetConfig (the code path `harbor run -p tasks -i ...`
 takes), so a prefix/glob mismatch or a task Harbor deems invalid is caught
-before any tokens are spent. Must run inside the TUA-Bench environment:
+before any tokens are spent. Must run in the repo environment (which pins the same Harbor as TUA-Bench):
 
-    uv run --project data/TUA-Bench python scripts/check_harbor_filter.py configs/eval_tasks.args
+    uv run python scripts/check_harbor_filter.py configs/eval_tasks.args
 """
 
 import asyncio

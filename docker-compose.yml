@@ -1,17 +1,27 @@
-version: '3.8'
-
+# Optional containerised runner. Run from the repo root:
+#   docker compose run --rm harness scripts/harbor_run.sh --agent oracle
+#
+# One-shot only: there is deliberately no `restart:` policy. A crashed
+# evaluation must stay crashed; auto-restarting it would re-spend API credit.
 services:
-  agent-harness:
+  harness:
     build: .
-    container_name: tua_bench_harness
+    image: pe6203-harness:local
     env_file:
       - .env
+    environment:
+      # Build task images for amd64 on every machine (several TUA-Bench
+      # images are amd64-only and hard-code amd64 paths), so arm64 Macs and
+      # x86 teammates run identical environments.
+      DOCKER_DEFAULT_PLATFORM: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
+    # Same absolute path as on the host: Harbor passes these paths to the
+    # host daemon as bind-mount sources for the task containers.
+    working_dir: ${PWD:?run docker compose from the repo root}
     volumes:
-      # Mount logs to host to preserve raw outputs after container teardown
-      - ./logs:/app/logs
-      # Mount custom agent instructions and guardrails
-      - ./claude.md:/app/claude.md:ro
-      - ./guardrails.md:/app/guardrails.md:ro
-    # Host networking allows the harness to reach a locally running Harbor instance at localhost:8080
-    network_mode: host
-    restart: unless-stopped
+      - ${PWD}:${PWD}
+      # Sibling-container access to the host daemon. This is root-equivalent
+      # on the Docker VM; only Harbor uses it, the model's commands never run
+      # in this container (see guardrails.md).
+      - /var/run/docker.sock:/var/run/docker.sock
+    entrypoint: []
+    command: ["harbor", "--version"]
