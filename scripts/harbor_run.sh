@@ -90,7 +90,10 @@ have_sha="$(git -C "$TUA_ROOT" rev-parse HEAD)"
 # 2. Harbor resolves the args file to exactly the intended tasks.
 uv run --frozen python scripts/check_harbor_filter.py "$ARGS_FILE"
 
-# 3. Docker VM can fit the largest task at the chosen concurrency
+# 3. Assets that `setup-env` downloads (inputs, references, test fixtures) exist.
+python3 scripts/check_assets.py "$ARGS_FILE"
+
+# 4. Docker VM can fit the largest task at the chosen concurrency
 #    (Harbor's own default of 4 concurrent 8 GB trials would OOM a 16 GB Mac).
 need_mb="$(python3 - "$ARGS_FILE" <<'EOF'
 import json, sys
