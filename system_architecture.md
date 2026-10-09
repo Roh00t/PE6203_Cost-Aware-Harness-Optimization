@@ -224,10 +224,10 @@ Estimates assume a mean of 25 steps × 12k prompt tokens and 600 output tokens p
 - A same-family pair (e.g. `gpt-oss-20b` → `gpt-oss-120b`, or `qwen3-coder-30b-a3b` → a larger Qwen3) isolates model scale cleanly and fits about 3× over.
 
 ### 7.3 Selection protocol (dev split only, before any eval run)
-1. Run H0 on the 10 **dev** tasks with 2–3 shortlisted base models (about $0.05–$0.30 each).
+1. Run **B0** (Harbor's stock `mini-swe-agent` 2.4.6, available now, no code of ours) on the 10 **dev** tasks with 2–3 shortlisted base models (about $0.05–$0.30 each). The model's pinned provider and decoding settings go in through a copy of stock `mini.yaml` whose only change is `model.model_kwargs` (diff-checked), so harness behaviour stays default. This pilot also gives B0's per-task cost and time, which set **B_task** (§6) and the run-time estimate (§10.5).
 2. Reject any model that scores 0/10 with mostly format errors, or overflows its context.
 3. Pick the cheapest model with non-trivial success. Then pick the expensive model by the same rule, requiring success above the base model's.
-4. Freeze the choices in `configs/models/{base,expensive}.yaml`: model ID, pinned provider, `temperature` (0.0 for non-reasoning models; the vendor default for reasoning models, with `reasoning_effort` fixed), `max_tokens`, `seed` where supported. Record the decision and pilot numbers in the report. **After this, the model files do not change.**
+4. Freeze the choices and B_task in `configs/models/{base,expensive}.yaml`: model ID, pinned provider, `temperature` (0.0 for non-reasoning models; the vendor default for reasoning models, with `reasoning_effort` fixed), `max_tokens`, `seed` where supported. Record the decision and pilot numbers in the report. **After this, the model files do not change.**
 
 ---
 
