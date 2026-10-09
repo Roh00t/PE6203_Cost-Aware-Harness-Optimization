@@ -58,3 +58,41 @@ This stack gives us absolute programmatic control over every token the model con
 3. **Budget Allocation**
 4. **Failure Detection & Recovery**
 5. **Pre-Submission Verification**
+---
+
+## Evaluation Subset
+
+Every configuration (default-harness baseline, each ablation, our harness, and the expensive-model baseline) runs on the **same 40 tasks**: 8 per task family, from TUA-Bench commit [`3497fd3`](https://github.com/facebookresearch/TUA-Bench/tree/3497fd320abcafaf4797424192c891a593fd7964).
+
+* **Families:** `task.toml` only has a fine-grained `category`, so the five families and 20 subcategories are parsed from the paper's Appendix B ([arXiv 2606.28480v1](https://arxiv.org/html/2606.28480v1)) into [`configs/task_families.json`](configs/task_families.json). The parse is checked against `dataset.toml`, and the population is Office 46 / Web 22 / System 19 / Scientific 17 / Multimedia 16.
+* **Sampling:** within each family, tasks are ranked by `sha256("tua-subset-v1:42:<task_id>")`. Ranks 1–8 are the **eval** split, ranks 9–10 the **dev** split (used only for harness development and model pilots), and the rest are ordered **reserves**. Hash ranking gives the same output on Python 3.11, 3.12 and 3.14, which `random.sample` does not guarantee.
+* **Eval fingerprint:** `08cef02483250faee37a4e7d599fe9c8998b8ca256dfeb3de8455babf0687524`
+* **Substitution rule:** before any model run, the oracle agent runs on all 40 tasks. A task that fails for an infrastructure reason is replaced by the next reserve in its family and logged in [`configs/subset_amendments.json`](configs/subset_amendments.json). The subset is frozen once the first model run starts.
+* **Reporting:** the headline success rate is the subset mean (equal weight per family). We also report a family-reweighted estimate (46/22/19/17/16 ÷ 120) as a projection to the full benchmark.
+
+| Family | Eval tasks |
+|---|---|
+| Multimedia & Design | 008-find-bird-chase-frames, 076-make-src-gif-clip, 080-convert-novel-epub, 088-extract-presenter-photos, 101-rearrange-warm-tiles, 110-rotate-macintosh-video, 111-set-video-wallpaper, 112-capture-video-frame |
+| Office & Productivity | 016-count-invoice-pivot, 068-strike-first-two-lines, 069-linux-ls-tutorial, 074-apa-references-review, 087-spreadsheet-to-doc-table, 102-daily-email-report, 116-bottom-left-page-numbers, 117-comma-text-to-table |
+| Scientific & Engineering | 000-count-nuclei, 004-place-heater-for-sensors, 006-extract-gym-auditorium, 011-epw-parquet-check, 015-gym-auditorium-sim, 019-prostate-red-overlay, 075-nuclei-locations, 114-nuclei-csv-open |
+| System & Software Operations | 046-restore-tripadvisor-tab, 047-set-bing-search, 052-vignette-filter-window, 057-set-undo-steps-100, 073-force-quit-frozen-doc, 085-webext-happy-scaffold, 089-install-recommended-exts, 115-remove-explorer-find-key |
+| Web & Information | 032-compare-iphones, 036-license-eligibility, 037-electric-cars-under-50k, 040-seattle-ny-miles-flight, 041-baby-name-carl, 042-black-sale-coffee-makers, 099-professor-contact-info, 105-search-cell-b6 |
+
+Dev split: 009-repair-org-chart-layout, 056-move-textbox-left, 020-calculate-period-rate, 086-futian-checkin-addresses, 003-rebuild-energy-model, 033-prostate-volume-est, 072-save-speedtest-results, 106-create-charles-ssh-user, 095-save-apple-searching-page, 100-name-mountain-photos.
+
+### Reproduce
+
+```bash
+git clone https://github.com/facebookresearch/TUA-Bench data/TUA-Bench
+git -C data/TUA-Bench checkout 3497fd320abcafaf4797424192c891a593fd7964
+(cd data/TUA-Bench && uv sync)
+python3 scripts/extract_families.py      # regenerates configs/task_families.json
+python3 scripts/sample_tasks.py          # regenerates configs/task_subset.json + *.args
+uv run --project data/TUA-Bench python scripts/check_harbor_filter.py configs/eval_tasks.args
+```
+
+Run a configuration on the subset (from `data/TUA-Bench`):
+
+```bash
+uv run harbor run -p tasks $(cat ../../configs/eval_tasks.args) -a oracle -o jobs/oracle-gate
+```
