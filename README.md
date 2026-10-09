@@ -104,13 +104,16 @@ uv run python scripts/check_harbor_filter.py configs/eval_tasks.args
 **Run** (host, recommended):
 
 ```bash
-scripts/harbor_run.sh --agent oracle --job-name oracle-gate
+scripts/harbor_run.sh --split dev --mode oracle      # dev first: measures build time and image size
+scripts/harbor_run.sh --split eval --mode oracle     # the oracle gate
 ```
+
+`--dry-run` prints the Harbor command after the checks. Anything after `--` goes to `harbor run` unchanged. Paid agents need `CONFIRM_PAID=1`, and on the eval split also `CONFIRM_EVAL=1`.
 
 **Run** (same toolchain in a container, from the repo root):
 
 ```bash
-docker compose run --rm harness scripts/harbor_run.sh --agent oracle --job-name oracle-gate
+docker compose run --rm harness scripts/harbor_run.sh --split dev --mode oracle
 ```
 
 `scripts/harbor_run.sh` refuses to start unless all of these hold:
@@ -124,4 +127,4 @@ It then overrides two Harbor defaults:
 * `--n-concurrent 1` instead of 4. Four 8 GB trials would run out of memory on a 16 GB machine.
 * `--no-delete` instead of `--delete`. Harbor's default deletes each task image after every trial, so every configuration would rebuild every image.
 
-Task images are built for `linux/amd64` on every machine. Several images are amd64-only, and using one architecture keeps arm64 Macs and x86 teammates on identical environments. Set `SPLIT=dev` for harness development and model pilots. The eval split is for recorded runs only.
+Task images are built for `linux/amd64` on every machine. Several images are amd64-only, and using one architecture keeps arm64 Macs and x86 teammates on identical environments. Use `--split dev` for harness development and model pilots. The eval split is for recorded runs only.

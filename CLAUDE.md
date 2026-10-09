@@ -16,7 +16,7 @@ Guidance for people and coding assistants working on this repository.
 - **No task-specific hard-coding.** Harness code, `configs/harness/` and the agent prompt must never mention a task ID, a file name from a task instruction, or an expected answer. Generic rules only.
 - **Fixed model and decoding.** Model, pinned OpenRouter provider, temperature and reasoning effort live in `configs/models/*.yaml` and are identical for every configuration. Once frozen, they never change.
 - **Every model call goes through OpenRouter and is logged** (`calls.jsonl`, with `purpose`). An unlogged call is a bug. Costs come from `configs/pricing.json`, never from mini-swe-agent's own cost field.
-- **Develop on `SPLIT=dev` only.** The 40 eval tasks are run only for recorded results, never for debugging or tuning.
+- **Develop on the dev split (`--split dev`) only.** The 40 eval tasks are run only for recorded results, never for debugging or tuning.
 - **The subset is frozen.** `configs/task_subset.json` changes only through the oracle gate (`configs/subset_amendments.json`), before the first model run. Its eval fingerprint must stay `08cef02483250faee37a4e7d599fe9c8998b8ca256dfeb3de8455babf0687524`.
 - **Every harness feature sits behind a component flag (C0–C5)** so it can be ablated alone. The baselines B0 and E use the stock harness, untouched.
 
@@ -31,14 +31,15 @@ Guidance for people and coding assistants working on this repository.
 
 ```bash
 uv sync --frozen                                         # env: Python 3.12 + harbor 0.6.3
-scripts/harbor_run.sh --agent oracle --job-name <name>   # free: runs reference solutions (eval split)
-SPLIT=dev scripts/harbor_run.sh --agent oracle --job-name <name>
+scripts/harbor_run.sh --split dev --mode oracle          # free: reference solutions (dev split)
+scripts/harbor_run.sh --split eval --mode oracle --dry-run   # checks only, prints the Harbor command
+CONFIRM_PAID=1 scripts/harbor_run.sh --split dev -- --agent <agent> --model openrouter/<id>   # paid: ask first
 uv run python scripts/check_harbor_filter.py configs/eval_tasks.args
 python3 scripts/sample_tasks.py                          # must reproduce the fingerprint above
 docker compose run --rm harness scripts/harbor_run.sh …  # same toolchain in a container
 ```
 
-`harbor_run.sh` checks the TUA-Bench commit, Harbor's resolved task list and Docker memory. It then runs with `--n-concurrent 1 --no-delete` and `DOCKER_DEFAULT_PLATFORM=linux/amd64`.
+`harbor_run.sh` checks the TUA-Bench commit, Harbor's resolved task list and Docker memory, and refuses paid agents without `CONFIRM_PAID=1` (plus `CONFIRM_EVAL=1` on the eval split). It then runs with `--n-concurrent 1 --no-delete` and `DOCKER_DEFAULT_PLATFORM=linux/amd64`.
 
 ## Repository map
 

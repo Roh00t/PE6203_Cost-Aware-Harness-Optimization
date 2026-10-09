@@ -135,7 +135,7 @@ Messages are short on purpose (they are billed tokens) and always say what to do
 | OpenRouter key | Credit limit set in the dashboard | n/a | Provider-side hard stop: the last line of defence |
 | Process supervision | No `restart:` policy anywhere | n/a | A crashed run stays crashed (`docker-compose.yml`) |
 
-**Human-in-the-loop** (enforced by `harbor_run.sh`, planned):
+**Human-in-the-loop** (enforced by `scripts/harbor_run.sh`):
 - Any agent other than `oracle` or `nop` requires `CONFIRM_PAID=1`.
 - `SPLIT=eval` with a model agent additionally requires `CONFIRM_EVAL=1`.
 - Coding assistants working on this repo must ask a human before setting either ([`CLAUDE.md`](CLAUDE.md)).
@@ -165,7 +165,7 @@ Messages are short on purpose (they are billed tokens) and always say what to do
 | Tasks and verifiers unmodified | `harbor_run.sh` refuses to start unless the TUA-Bench checkout is at the subset's commit with no tracked changes under `tasks/` or in `dataset.toml` |
 | The agent never sees grader material | Harbor uploads `tests/` only after the agent has finished. `solution/` is used only by the oracle agent. G-INT-01 blocks and logs any attempt anyway. |
 | No task-specific hard-coding | `scripts/check_no_task_leak.py` (planned, runs in `harbor_run.sh`) fails if `harness/`, `configs/harness/` or `agent_instructions.md` contains any task ID, or any file name that appears in a task instruction |
-| No tuning on the evaluation set | Development and pilots on `SPLIT=dev` only. `CONFIRM_EVAL=1` gate (§4). |
+| No tuning on the evaluation set | Development and pilots on the dev split (`--split dev`) only. `CONFIRM_EVAL=1` gate (§4). |
 | Subset fixed | `configs/task_subset.json` changes only through the oracle gate, before the first model run ([architecture §10.1](system_architecture.md#101-before-any-model-run)) |
 | Same budget for every configuration | Limits in §4 live in versioned config files, not `.env` |
 
