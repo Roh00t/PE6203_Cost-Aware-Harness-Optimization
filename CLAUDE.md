@@ -18,7 +18,7 @@ Guidance for people and coding assistants working on this repository.
 - **Every model call goes through OpenRouter and is logged** (`calls.jsonl`, with `purpose`). An unlogged call is a bug. Costs come from `configs/pricing.json`, never from mini-swe-agent's own cost field.
 - **Develop on the dev split (`--split dev`) only.** The 40 eval tasks are run only for recorded results, never for debugging or tuning.
 - **The subset is frozen.** `configs/task_subset.json` changes only through the oracle gate (`configs/subset_amendments.json`), before the first model run. Its eval fingerprint must stay `08cef02483250faee37a4e7d599fe9c8998b8ca256dfeb3de8455babf0687524`.
-- **Every harness feature sits behind a component flag (C0–C5)** so it can be ablated alone. The baselines B0 and E use the stock harness, untouched.
+- **Every harness feature sits behind a component flag (C0–C5)** so it can be ablated alone. The baselines B0 and E use the stock harness with its **default settings**: no step cap, no cost cap. Never add limits to them. The per-task budget (S steps, B_task dollars) belongs to our variants through C3.
 
 ## Ask the user first
 

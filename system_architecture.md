@@ -17,7 +17,10 @@ The question: can a cheap base model inside our harness beat an expensive model 
 | No fine-tuning, no task-specific hard-coding | Harness code, configs and prompts never mention a task ID, file name or answer. A grep check runs before every paid job ([guardrails.md §6](guardrails.md#6-benchmark-integrity)). |
 | Fixed, documented subset of at least 40 tasks, same for every configuration | 40 eval tasks, 8 per family, hash-ranked with seed 42, fingerprint `08cef024…` ([README](README.md#evaluation-subset)). |
 | One provider and price table for all costs, harness calls included | Every call goes through OpenRouter, is logged, and is priced from one frozen table (§8). |
-| Report per-task time and step limits; flag gains that come only from extra budget | Uniform limits for every configuration (§6). Any component that changes a limit is labelled as a budget change in the ablation table. |
+| Default-harness baseline is "unmodified … with its default settings" | B0 and E run Harbor's stock `mini-swe-agent` 2.4.6 with its default config: no step cap and no cost cap, under the task's own 2,400 s limit (§6). H0 keeps the same defaults. |
+| Maximise success "under a fixed per-task cost budget" | Our variants run under one per-task budget, **B_task** dollars and S = 50 steps, set from the dev pilot and frozen before eval (§6). It is introduced by C3, so the budget is itself an ablated harness choice. |
+| Report per-task time and step limits; flag gains that come only from extra budget | §6 lists every limit per configuration. Components that change a limit (C3) are labelled as budget changes in the ablation table. |
+| Discuss whether the gain shrinks with a stronger base model | V-E (our harness with the expensive model) is a **required** configuration (§2) |
 
 **Metrics.** Success rate = mean verifier reward over the 40 tasks. Cost per run = US dollars and tokens over the same 40 tasks, split into agent inference and harness overhead. Main metric: the best success rate reached at or below a given cost, shown on an accuracy–cost plot with the Pareto frontier marked.
 
@@ -29,14 +32,16 @@ The question: can a cheap base model inside our harness beat an expensive model 
 |---|---|---|---|
 | **B0** | Harbor's built-in `mini-swe-agent` agent, **v2.4.6** pinned, stock `mini.yaml`. Runs inside the task container. | base | Default-harness baseline (required) |
 | **E** | Same as B0 | expensive | Expensive-model baseline (required) |
-| **H0** | Our host-side port of mini-swe-agent with **every component off**: same prompt, same 30 s command timeout, same output truncation as B0 | base | Parity control and ablation root |
+| **H0** | Our host-side port of mini-swe-agent with **every component off**: same prompt, same 30 s command timeout, same output truncation, and the same absence of step and cost caps as B0 | base | Parity control and ablation root |
 | **H0+Ck** (k = 0…5) | H0 with exactly one component on | base | Component ablation (one component at a time, same baseline) |
 | **V** | H0 with all components on | base | Our harness |
-| *V-E* (optional) | V | expensive | Answers the brief's question of whether the gain shrinks with a stronger model |
+| **V-E** | V | expensive | Required: the brief asks whether the gain shrinks with a stronger model. Compare V−B0 with V-E−E. |
 
 **Why H0 exists.** B0 runs mini-swe-agent *inside* the container, while our harness runs on the host and executes commands in the container (§3). Moving execution is itself a change, so ablating from B0 would mix it into every component's effect. H0 is the host port with nothing switched on. We check it scores within noise of B0 (§10.2). Every component's effect is then measured against H0.
 
-**Run priority** when budget or time runs short: B0, E, V, H0 (headline comparison) → C5, C4, C1 (the components expected to matter most) → C0, C2, C3 → V-E. Configurations that were not run are listed as "not run" in the report, never dropped silently.
+That is **11 configurations** × 40 tasks.
+
+**Run priority** when budget or time runs short: B0, E, V, V-E, H0 (headline comparison and discussion) → C5, C4, C1 (the components expected to matter most) → C0, C2, C3. Configurations that were not run are listed as "not run" in the report, never dropped silently.
 
 ---
 
@@ -133,7 +138,14 @@ Each component sits behind one flag in `configs/harness/<config>.yaml`, so it ca
 - **Cost effect.** Fewer prompt tokens per step: the main lever on the cost axis.
 
 ### C2 · Tool interface
-- **Validation.** A Pydantic model `BashAction` checks each proposed action *before* it reaches the container:
+- **Granular tools.** Besides `bash`, the model gets four function tools, each with a Pydantic argument schema:
+  - `read_file(path, start_line?, end_line?)`: returns numbered lines, at most 200 per call;
+  - `write_file(path, content)`: creates or overwrites a file;
+  - `edit_file(path, old, new)`: replaces one exact, unique snippet, and fails with the match count otherwise;
+  - `search(pattern, path, glob?)`: regex search, returning `file:line: text`, capped at 100 hits.
+
+  They run in the container through one small helper the harness uploads to `/tmp/harness/bin/tools.py`. Arguments travel base64-encoded, so no shell quoting can break them. Each tool is a generic file operation, not task knowledge. This covers the brief's "one shell tool versus separate read, write, edit and search tools".
+- **Validation.** Pydantic models (`BashAction` and one per tool) check every call *before* it reaches the container. For `bash`:
   - command is non-empty and at most 8,000 characters;
   - heredocs are balanced;
   - the submit sentinel is not combined with other commands;
@@ -141,12 +153,14 @@ Each component sits behind one flag in `configs/harness/<config>.yaml`, so it ca
 - **One action per turn.** Only the first tool call is executed, and the observation says how many were ignored. Stock executes them all.
 - **Error reporting.** A rejected action returns a templated error naming the exact problem and a valid example. The format-error limit rises from 3 to 5, with more specific guidance as it escalates. Stock ends the run with `RepeatedFormatError` after 3 in a row.
 - **Targets.** Unparsable tool calls, hung interactive commands that burn the time budget.
-- **Optional sub-flag `c2_shims` (stretch).** Granular `view` / `replace` / `find_text` helpers installed in `/tmp/harness/bin`. This covers the brief's "one shell tool vs separate tools" lever. Measured separately if budget allows.
+- **Sub-flags** `c2_tools` and `c2_validation`. Both are on in H0+C2 and V. If budget remains, H0+C2 is split into two runs so the report can separate the effect of tool granularity from that of validation.
 
-### C3 · Budget awareness
-- **Status line.** Every observation ends with `[budget] step s/S · context ~t tok · elapsed m/M min`.
+### C3 · Budget allocation and awareness
+- **Per-task budget.** C3 introduces the fixed per-task budget: a step cap S = 50 and a dollar cap **B_task** (§6), enforced by the gateway from the price table. On either cap the trial ends with `LimitsExceeded` / `CostCapExceeded`. Stock mini-swe-agent has neither.
+- **Status line.** Every observation ends with `[budget] step s/S · $spent/$B_task · context ~t tok · elapsed m/M min`.
 - **Phase nudges.** Two one-line messages: at 70% of steps ("stop exploring; verify outputs") and at 90% ("submit now if outputs exist").
-- **Command timeout.** Raised from stock's 30 s to `command_timeout` = 180 s, and the prompt explains how to background long jobs. *This changes a budget, so the ablation row is labelled "budget change" as the brief requires.*
+- **Command timeout.** Raised from stock's 30 s to `command_timeout` = 180 s, and the prompt explains how to background long jobs.
+- *C3 changes budgets in both directions (caps steps and spend, lengthens command timeouts), so its ablation row is labelled "budget change" as the brief requires.*
 - **Targets.** Budget exhaustion with no submission; long scientific simulations killed at 30 s.
 
 ### C4 · Failure detection and recovery
@@ -167,16 +181,17 @@ Each component sits behind one flag in `configs/harness/<config>.yaml`, so it ca
 
 ---
 
-## 6. Budgets and Limits (identical for every configuration)
+## 6. Budgets and Limits
 
 | Limit | Value | Applies to | Notes |
 |---|---|---|---|
 | Agent wall-clock per task | Task default **2,400 s** (`task.toml`) | All | The paper's own default; not changed |
-| Step cap | **50 model calls** | All | Stock mini has no step cap and Harbor passes `--cost-limit 0`. For B0/E we pass a copy of `mini.yaml` v2.4.6 with only `step_limit: 50` added (diff checked, §12). |
-| Command timeout | 30 s (stock) / 180 s (C3, V) | Per config | Reported as a budget change |
-| Per-task spend cap | 3× the median trial cost of H0 on the dev pilot (**TBD**) | Host configs | Computed from the price table. Stops runaway trials. |
-| Per-job spend cap | (configs × 40 × per-task cap) + 20% | Host configs | Kill switch; [guardrails.md §4](guardrails.md#4-limits-and-kill-switches) |
-| Concurrency | 1 trial at a time (raise only if Docker memory ≥ 8 GB × n) | All | `N_CONCURRENT` in `harbor_run.sh` |
+| Step cap | None (stock default) / **S = 50** with C3 | B0, E, H0, H0+C0/C1/C2/C4/C5: none · H0+C3, V, V-E: 50 | Stock mini has no step cap and Harbor passes `--cost-limit 0`; we keep those defaults for the baselines |
+| Command timeout | 30 s (stock) / 180 s (C3) | Per config | Reported as a budget change |
+| Per-task cost budget **B_task** | 2× the median per-task cost of B0 on the dev pilot, rounded up to the cent (**TBD**, frozen before eval) | H0+C3, V. V-E gets the same token-equivalent cap (B_task × expensive/base price ratio). | The brief's "fixed per-task cost budget". Pegging it to the default harness's own typical spend means a win cannot come from outspending the baseline. |
+| Safety ceiling for uncapped configs | None unless the pilot says otherwise | B0, E, H0, H0+C0/C1/C2/C4/C5 | Protected by each person's OpenRouter key credit limit. If the dev pilot projects an uncapped configuration above its share of the budget, add a high ceiling (binding in under 5% of pilot trials), apply it to every uncapped configuration, and report it as a deviation from defaults. |
+| Per-job spend cap | Job estimate + 20% | Host configs | Kill switch in the gateway; [guardrails.md §4](guardrails.md#4-limits-and-kill-switches) |
+| Concurrency | Trials of the **same task** run in parallel: n = ⌊0.9 × Docker memory ÷ task memory⌋, capped at the number of configurations | All | Most eval tasks need 2–4 GB, so 2–4 at once on a 10 GB VM; Scientific tasks (8 GB) run one at a time. Auto mode in `harbor_run.sh` is planned (§10.3). |
 
 ---
 
@@ -252,6 +267,7 @@ results/<config_id>/              # committed, curated
   trials.csv                      #   task_id, reward, cost_table_usd, tokens, steps, exit_status, wall_s, infra_error
   calls.jsonl.gz                  #   every model call (§8.2)
   events.jsonl.gz                 #   every harness event (below)
+  trials/<task>/<trial>/          #   raw logs: Harbor result.json, ATIF + mini trajectories, verifier output (gzipped)
 results/summary.csv               # one row per configuration: success, $/run, tokens/run, overhead split
 results/pareto.png                # accuracy–cost plot with frontier
 ```
@@ -274,9 +290,23 @@ results/pareto.png                # accuracy–cost plot with frontier
 Run B0 and H0 on the eval split. If H0's success differs from B0's by more than 2 tasks out of 40, investigate the adapter (§3.1) before running any ablation. Report both numbers either way.
 
 ### 10.3 Run order and repeats
-- **Task-major order:** all configurations of task *t* run back to back, then task *t+1*. Live websites (22 Web tasks) then drift within a task's comparison, not across configurations. Work is split across machines **by task, never by configuration**, so machine differences cancel out of the paired comparisons.
+- **Task-major order, one multi-agent Harbor job per task:** all configurations of task *t* run in one Harbor job, in parallel up to the concurrency limit (§6), then task *t+1*. The task image is built once and shared. Live websites (22 Web tasks) then drift within a task's comparison, not across configurations. Work is split across machines **by task, never by configuration**, so machine differences cancel out of the paired comparisons.
 - **Infrastructure errors** (image build failure, OOM, API 5xx after retries, Docker crash) are rerun up to 2 times and never scored as task failures. Their count is reported.
 - **Repeats:** one run per configuration (stated in the report as the brief allows). If budget remains after everything in §2, run B0, E and V twice more and report mean ± sd.
+
+### 10.5 Run-time estimate
+The brief sets no runtime; it allows a 40-task subset and a single run when compute is limited. The time comes from TUA-Bench itself (one real container per trial, 2,400 s limit) and from our configuration count.
+
+| Item | Estimate |
+|---|---|
+| Image build, once per task | 1.5–10.8 min (measured on dev) |
+| One trial (agent + verifier), cheap model | about 3–6 min (to be measured in the pilot) |
+| Trials | 11 configurations × 40 tasks = 440 |
+| Sequential total | about 25–45 machine-hours |
+| With same-task trials in parallel (2–4 at once for 32 of 40 tasks) | about 10–18 machine-hours |
+| **Per laptop, split by task across four** | **about 3–5 hours** (upper end if trials take longer than estimated) |
+
+Uncapped configurations (B0, E, H0 and four ablations) can each run up to the 2,400 s task limit when the agent loops, which is the main risk to these numbers. The dev pilot measures it before eval.
 
 ### 10.4 Analysis
 - **Headline:** subset success (equal weight per family) plus a family-reweighted estimate (46/22/19/17/16 ÷ 120).
@@ -300,13 +330,13 @@ Run B0 and H0 on the eval split. If H0's success differs from B0's by more than 
 | Oracle gate | 50 | $0 |
 | Model pilot (dev) | ~3 models × 10 | ~$0.30 |
 | Harness development (dev) | ad hoc | ≤ $1.00 cap |
-| B0, H0, H0+C0…C5, V | 9 × 40 | ~$2.40 |
+| B0, H0, H0+C0…C5, V | 9 × 40 | ~$2.40 (uncapped configurations may run higher; measured in the pilot) |
 | E | 1 × 40 | ~$0.55 |
-| V-E (optional) | 1 × 40 | ~$0.55 |
+| V-E | 1 × 40 | ~$0.55 |
 | Repeats of B0/E/V (optional) | 2 × 3 × 40 | ~$2.20 |
 | **Total** | | **~$7.00**, within $8 at the estimated mean |
 
-Worst-case costs are about 4× the estimates. The per-task and per-job caps (§6) stop that before the credit is gone. The table is updated with real numbers after the pilot.
+Worst-case costs are about 4× the estimates. For capped configurations, B_task and the per-job cap stop that before the credit is gone. For uncapped ones the protection is the key credit limits plus the pilot-based safety ceiling (§6). The table is updated with real numbers after the pilot.
 
 ---
 
@@ -320,20 +350,20 @@ configs/
   subset_amendments.json      ✓ oracle-gate swaps
   pricing.json                ☐ frozen price table (§8.1)
   models/{base,expensive}.yaml  ☐ model, pinned provider, decoding (§7.3)
-  harness/{b0,h0,c0..c5,v}.yaml ☐ component flags and parameters
-  harness/mini_v2.4.6_step50.yaml ☐ stock mini.yaml + step_limit only (B0/E)
+  harness/{h0,c0..c5,v}.yaml  ☐ component flags and parameters (B0/E need none: stock harness, `--ak version=2.4.6`)
 harness/                      ☐ the host-side harness package
   agent.py                    ☐ CostAwareAgent (Harbor BaseAgent)
   loop.py                     ☐ HarnessAgent (DefaultAgent subclass) and hooks
   environment.py              ☐ HarborEnvironment adapter (§3.1)
   gateway.py                  ☐ OpenRouter client, retries, call logger (§8.2)
   components/{context,tools,budget,recovery,verify}.py ☐ C1–C5
+  container_tools.py          ☐ read/write/edit/search helper uploaded into the task container (C2)
   guardrails.py               ☐ rule table from guardrails.md §3
   prompts.py                  ☐ renders agent_instructions.md sections
 scripts/
   extract_families.py, sample_tasks.py, check_harbor_filter.py, harbor_run.sh   ✓
   collect_costs.py, analyze.py, plot_pareto.py                                  ☐
-results/                      ☐ curated logs behind every reported number (§9)
+results/                      ☐ raw logs behind every reported number, trajectories included (§9; the brief requires them)
 ```
 
 ✓ exists · ☐ planned
@@ -351,4 +381,6 @@ results/                      ☐ curated logs behind every reported number (§9
 | Pinned OpenRouter provider goes down | Risk | Infra-error rerun policy. If it's down for long, re-pin and rerun *all* configurations of the affected tasks. |
 | C3 raising the command timeout is a budget increase | Accepted | Labelled as a budget change in the ablation table |
 | H0 ≠ B0 parity | Risk | §10.2 check before ablations |
+| Uncapped baselines (B0, E, H0) overspend | Risk | Dev pilot measures real cost and time first. Per-person key credit limits. If needed, a high safety ceiling applied to every uncapped configuration and reported as a deviation (§6). |
+| B_task value | **TBD** | 2× B0's median per-task cost on the dev pilot; frozen with the model configs |
 | Disk vs task images (about 26 GB of build cache per 10 tasks, measured) | Mitigated | One Harbor job per task with `--delete`. A free-disk guard before each task (`MIN_FREE_GB`). Opt-in `--prune-cache` trims the build cache after each task. In the experiment phase, all configurations of a task run in one multi-agent Harbor job, then the cache is pruned. |

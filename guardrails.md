@@ -125,11 +125,11 @@ Messages are short on purpose (they are billed tokens) and always say what to do
 | Consecutive format errors | 3 | 5 (C2) | Trial ends, `exit_status = RepeatedFormatError` |
 | Guardrail blocks per trial | 10 | 10 | Trial ends, `exit_status = GuardrailLimit` |
 | Repeat-failure intercepts | n/a | Unlimited, each logged (C4) | The command is not executed (see C4) |
-| Model calls per trial | 50 | 50 | `exit_status = LimitsExceeded` |
+| Model calls per trial | None (stock default) | 50 (C3) | `exit_status = LimitsExceeded` |
 | Agent wall-clock | 2,400 s (task default) | same | Harbor stops the trial; logs already flushed |
 | Per-command timeout | 30 s | 180 s (C3) | Command killed; message with background-job recipe (C4) |
 | Output read per command | 1 MB | 1 MB | Rest dropped, `[output truncated at 1 MB]` |
-| Per-task spend | Cap from the dev pilot ([architecture §6](system_architecture.md#6-budgets-and-limits-identical-for-every-configuration)) | same | `exit_status = CostCapExceeded` |
+| Per-task spend | None (stock default); key credit limit, plus a pilot-based safety ceiling if needed ([architecture §6](system_architecture.md#6-budgets-and-limits)) | B_task (C3) | `exit_status = CostCapExceeded` |
 | Per-job spend | Job budget + 20% | same | Gateway refuses further calls; remaining trials marked `budget_abort` (rerun later, never scored as failures) |
 | API errors (429, 5xx, timeout) | 3 retries, backoff 2/4/8 s | same | Then infra error → trial rerun policy |
 | OpenRouter key | Credit limit set in the dashboard | n/a | Provider-side hard stop: the last line of defence |
@@ -167,7 +167,7 @@ Messages are short on purpose (they are billed tokens) and always say what to do
 | No task-specific hard-coding | `scripts/check_no_task_leak.py` (planned, runs in `harbor_run.sh`) fails if `harness/`, `configs/harness/` or `agent_instructions.md` contains any task ID, or any file name that appears in a task instruction |
 | No tuning on the evaluation set | Development and pilots on the dev split (`--split dev`) only. `CONFIRM_EVAL=1` gate (§4). |
 | Subset fixed | `configs/task_subset.json` changes only through the oracle gate, before the first model run ([architecture §10.1](system_architecture.md#101-before-any-model-run)) |
-| Same budget for every configuration | Limits in §4 live in versioned config files, not `.env` |
+| Budgets stated and versioned | Baselines keep stock defaults. Variant budgets (S, B_task, timeouts) live in versioned config files, not `.env`. The report lists every limit per configuration. |
 
 ---
 
