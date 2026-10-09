@@ -351,4 +351,4 @@ results/                      ☐ curated logs behind every reported number (§9
 | Pinned OpenRouter provider goes down | Risk | Infra-error rerun policy. If it's down for long, re-pin and rerun *all* configurations of the affected tasks. |
 | C3 raising the command timeout is a budget increase | Accepted | Labelled as a budget change in the ablation table |
 | H0 ≠ B0 parity | Risk | §10.2 check before ablations |
-| Disk (35 GB free) vs task images | Risk | `--no-delete` within a task's configurations, then prune that task's image (task-major order makes this safe) |
+| Disk vs task images (about 26 GB of build cache per 10 tasks, measured) | Mitigated | One Harbor job per task with `--delete`. A free-disk guard before each task (`MIN_FREE_GB`). Opt-in `--prune-cache` trims the build cache after each task. In the experiment phase, all configurations of a task run in one multi-agent Harbor job, then the cache is pruned. |

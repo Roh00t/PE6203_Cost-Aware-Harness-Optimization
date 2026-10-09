@@ -39,7 +39,7 @@ python3 scripts/sample_tasks.py                          # must reproduce the fi
 docker compose run --rm harness scripts/harbor_run.sh …  # same toolchain in a container
 ```
 
-`harbor_run.sh` checks the TUA-Bench commit, Harbor's resolved task list and Docker memory, and refuses paid agents without `CONFIRM_PAID=1` (plus `CONFIRM_EVAL=1` on the eval split). It then runs with `--n-concurrent 1 --no-delete` and `DOCKER_DEFAULT_PLATFORM=linux/amd64`.
+`harbor_run.sh` checks the TUA-Bench commit, Harbor's resolved task list, downloaded assets and Docker memory, and refuses paid agents without `CONFIRM_PAID=1` (plus `CONFIRM_EVAL=1` on the eval split). It runs one Harbor job per task under `jobs/<run>/<task>/` with `--n-concurrent 1 --delete` and `DOCKER_DEFAULT_PLATFORM=linux/amd64`, and stops below `MIN_FREE_GB` of free disk. `--prune-cache` trims Docker's shared build cache after each task; it is opt-in because it also evicts other projects' cache. `scripts/summarize_run.py jobs/<run>` prints the results.
 
 ## Repository map
 
@@ -62,5 +62,5 @@ docker compose run --rm harness scripts/harbor_run.sh …  # same toolchain in a
 
 ## Machine notes
 
-- Docker Desktop needs at least 10 GB of memory (Scientific tasks request 8 GB each). Free disk is tight (about 35 GB on the Mac), so prune a task's image only after all its configurations have run.
+- Docker Desktop needs at least 10 GB of memory (Scientific tasks request 8 GB each). Disk use is dominated by Docker's build cache, not images: 10 dev tasks added about 26 GB, and deleting their images freed nothing. Run long jobs with `--prune-cache` (after asking), and keep at least 25 GB free.
 - On Apple Silicon, task images build and run under amd64 emulation. First builds of Scientific images are slow; the oracle gate shows how slow.

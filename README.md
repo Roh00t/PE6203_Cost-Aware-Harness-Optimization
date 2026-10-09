@@ -38,7 +38,7 @@ Our architecture relies on a strict separation of concerns. We separate the agen
 
 ### 2. Cognitive Prompting & Procedural Memory
 
-* **`claude.md` (or `agent_instructions.md`)**: The core operational playbook. This acts as the agent's procedural memory, containing the system prompt, the format for emitting Bash commands, rules for reading standard output (`stdout`), and the strict criteria for when the agent is allowed to declare a task "complete."
+* **`agent_instructions.md`**: The evaluated agent's prompt (system prompt, command rules, submission criteria), split into sections that switch on with each harness component. **`CLAUDE.md`** is separate: it holds the rules for people and coding assistants working on this repo.
 
 ### 3. The Runtime Implementation
 
@@ -93,38 +93,94 @@ uv run python scripts/check_harbor_filter.py configs/eval_tasks.args
 
 ---
 
-## Running Locally
+## Team Setup (each laptop)
 
-**One-time setup**
+**Prerequisites:** git, [uv](https://docs.astral.sh/uv/getting-started/installation/), and [Docker Desktop](https://www.docker.com/products/docker-desktop/) with **Memory ≥ 10 GB** and **CPUs ≥ 6** (Settings → Resources). Keep **≥ 25 GB of free disk**. macOS and Linux work as-is. On Windows, run everything inside WSL2 (Ubuntu) with Docker Desktop's WSL integration on.
 
-1. Docker Desktop → Settings → Resources: **Memory ≥ 10 GB** (the Scientific & Engineering tasks request 8 GB each), CPUs ≥ 6, and enough disk for the task images.
-2. `cp .env.example .env` and set `OPENROUTER_API_KEY`. Use a dedicated key with a credit limit.
-3. `(cd data/TUA-Bench && uv run setup-env)` downloads the task assets.
-
-**Run** (host, recommended):
+Run these once, from the folder where you keep your repos:
 
 ```bash
-scripts/harbor_run.sh --split dev --mode oracle      # dev first: measures build time and image size
-scripts/harbor_run.sh --split eval --mode oracle     # the oracle gate
+git clone https://github.com/Roh00t/PE6203_Cost-Aware-Harness-Optimization.git
+cd PE6203_Cost-Aware-Harness-Optimization
+uv sync --frozen
 ```
 
-`--dry-run` prints the Harbor command after the checks. Anything after `--` goes to `harbor run` unchanged. Paid agents need `CONFIRM_PAID=1`, and on the eval split also `CONFIRM_EVAL=1`.
+```bash
+git clone https://github.com/facebookresearch/TUA-Bench data/TUA-Bench
+git -C data/TUA-Bench checkout 3497fd320abcafaf4797424192c891a593fd7964
+```
 
-**Run** (same toolchain in a container, from the repo root):
+```bash
+(cd data/TUA-Bench && uv sync --frozen && uv run setup-env)
+```
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env`: add **your own** `OPENROUTER_API_KEY`, created with a credit limit. `GEMINI_API_KEY` is optional and is only used by one dev task's grader.
+
+Check the setup. The first four lines must print `OK`, and the sampler must reprint fingerprint `08cef024…`:
+
+```bash
+python3 scripts/check_assets.py configs/eval_tasks.args
+python3 scripts/check_assets.py configs/dev_tasks.args
+uv run python scripts/check_harbor_filter.py configs/eval_tasks.args
+uv run python scripts/check_harbor_filter.py configs/dev_tasks.args
+python3 scripts/sample_tasks.py --out-dir /tmp/subset-check | grep fingerprint
+```
+
+Smoke test, free and about 2 minutes (one small task with its reference solution):
+
+```bash
+bash scripts/harbor_run.sh --split dev --mode oracle --only 106-create-charles-ssh-user
+```
+
+Notes:
+
+* `data/` is git-ignored. Everyone builds their own copy with the commands above, and nobody commits it.
+* `setup-env` downloads about 0.9 GB (Hugging Face, NREL S3, Google Drive) into 14 task folders. It never changes tracked task or verifier files.
+* No need to activate `.venv`. `uv run` picks the right environment. If it *is* active, `uv` prints a harmless `VIRTUAL_ENV … does not match` warning inside `data/TUA-Bench`.
+
+---
+
+## Running Locally
+
+```bash
+bash scripts/harbor_run.sh --split dev --mode oracle                          # free: reference solutions
+bash scripts/harbor_run.sh --split dev --mode oracle --only 003-rebuild-energy-model
+bash scripts/harbor_run.sh --split eval --mode oracle --prune-cache -- --job-name eval-oracle-gate
+python3 scripts/summarize_run.py jobs/eval-oracle-gate                         # one table for the run
+```
+
+* `--only ID[,ID…]` runs part of a split.
+* `--dry-run` prints the commands after the checks.
+* Anything after `--` goes to `harbor run` unchanged.
+* `--job-name` names the run, and re-running with the same name **resumes** it, skipping finished tasks.
+* Paid agents need `CONFIRM_PAID=1`, and on the eval split also `CONFIRM_EVAL=1`.
+
+Same toolchain in a container, from the repo root:
 
 ```bash
 docker compose run --rm harness scripts/harbor_run.sh --split dev --mode oracle
 ```
 
-`scripts/harbor_run.sh` refuses to start unless all of these hold:
+**Pre-flight checks.** `scripts/harbor_run.sh` refuses to start unless all of these hold:
 
-* the TUA-Bench checkout matches the subset's commit and has no modified tasks or verifiers;
-* Harbor resolves exactly the subset's tasks;
-* the Docker VM has enough memory for the largest task at the chosen concurrency.
+* the TUA-Bench checkout is at the subset's commit, with no modified tasks or verifiers;
+* Harbor resolves exactly the requested tasks;
+* every task's downloaded assets exist;
+* the Docker VM has enough memory for the largest task.
 
-It then overrides two Harbor defaults:
+**Disk policy.** Measured on the dev split: 10 tasks added about 26 GB of Docker build cache, while deleting their images freed nothing on the host. So the run is bounded per task:
 
-* `--n-concurrent 1` instead of 4. Four 8 GB trials would run out of memory on a 16 GB machine.
-* `--no-delete` instead of `--delete`. Harbor's default deletes each task image after every trial, so every configuration would rebuild every image.
+1. Each task runs as its own Harbor job under `jobs/<run>/<task>/`.
+2. Harbor deletes each trial's image afterwards (`--delete`), and the build cache keeps rebuilds of the same task fast.
+3. Before every task the script checks free disk, and stops cleanly below `MIN_FREE_GB` (default 10). A full disk can corrupt Docker's VM.
+4. `--prune-cache` shrinks Docker's build cache to `CACHE_KEEP_GB` (default 15) after each task. Docker's cache is shared, so this also evicts other projects' oldest build cache. That cache is regenerable but slow to rebuild, so the flag is opt-in.
 
-Task images are built for `linux/amd64` on every machine. Several images are amd64-only, and using one architecture keeps arm64 Macs and x86 teammates on identical environments. Use `--split dev` for harness development and model pilots. The eval split is for recorded runs only.
+**Other defaults:**
+
+* `--n-concurrent 1` instead of Harbor's 4. Four 8 GB trials would run out of memory on a 16 GB machine.
+* Task images build for `linux/amd64` on every machine. Several images are amd64-only, and one architecture keeps arm64 Macs and x86 laptops on identical environments.
+* Use `--split dev` for harness development and model pilots. The eval split is for recorded runs only.
