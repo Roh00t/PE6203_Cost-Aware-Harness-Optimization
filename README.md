@@ -184,3 +184,51 @@ docker compose run --rm harness scripts/harbor_run.sh --split dev --mode oracle
 * `--n-concurrent 1` instead of Harbor's 4. Four 8 GB trials would run out of memory on a 16 GB machine.
 * Task images build for `linux/amd64` on every machine. Several images are amd64-only, and one architecture keeps arm64 Macs and x86 laptops on identical environments.
 * Use `--split dev` for harness development and model pilots. The eval split is for recorded runs only.
+
+---
+
+## Disk Use and Cleanup
+
+The runs need disk space, but it's bounded and all of it can be reclaimed. Measured on a Mac on 2026-10-10:
+
+| What | Size | Notes |
+|---|---|---|
+| Docker build cache and task images | ~12 GB now, est. 15–25 GB peak during eval runs | Each task is a container that Docker builds. Everything Docker stores sits in one virtual disk capped by Docker Desktop (Settings → Resources → Disk usage limit, 60 GB by default), so it cannot grow past that. |
+| `.venv` | ~0.7 GB | Repo Python environment |
+| `data/TUA-Bench` | ~0.75 GB | Benchmark, downloaded inputs, its own `.venv` |
+| `setup-env` download cache in `$TMPDIR` | ~1 GB | Only reused if `setup-env` runs again; safe to delete |
+| `jobs/` | MBs | Raw run logs |
+
+During runs, `scripts/harbor_run.sh` stops cleanly if free disk falls below `MIN_FREE_GB` (10 GB). Re-running the same command resumes. `--prune-cache` keeps the build cache under `CACHE_KEEP_GB` (15 GB).
+
+**At the end of the project**, after `results/` is committed, run these from the repo folder to get the space back.
+
+Clear all of Docker's build cache. This also clears other projects' cache: safe, but their next builds will be slower.
+
+```bash
+docker builder prune -af
+```
+
+Remove the helper images this project pulled or built:
+
+```bash
+docker image rm pe6203-harness:local docker:27.5.1-cli ghcr.io/astral-sh/uv:0.11.14 alpine:3.20
+```
+
+Delete the benchmark copy, Python environments and raw job logs:
+
+```bash
+rm -rf data .venv jobs
+```
+
+Delete the `setup-env` download cache:
+
+```bash
+rm -f "${TMPDIR:-/tmp}/PE-Video-test-000000.tar" "${TMPDIR:-/tmp}/Task05_Prostate.tar" "${TMPDIR:-/tmp}/comstock-100094-0.parquet"
+```
+
+```bash
+rm -rf "${TMPDIR:-/tmp}/real-estate-openstudio-comstock-pngs" "${TMPDIR:-/tmp}/cell-profiler"
+```
+
+Docker's disk file shrinks on its own within a few minutes. Docker Desktop's "Troubleshoot → Clean / Purge data" removes everything Docker holds, for every project.

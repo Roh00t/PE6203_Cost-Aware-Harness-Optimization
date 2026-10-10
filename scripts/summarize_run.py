@@ -8,6 +8,7 @@ reward, and writes <run>/summary.json.
 """
 
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -26,7 +27,10 @@ def main() -> None:
     run = Path(sys.argv[1])
     rows = []
     # Trial dirs are named <task>__<id>; nested one level deeper for per-task jobs.
-    for result in sorted(p for p in run.rglob("result.json") if "__" in p.parent.name):
+    # Skip earlier attempts set aside by harbor_run.sh (<task>.<interrupted|errored|rerun>-<time>/).
+    aside = re.compile(r"\.(interrupted|errored|rerun)-\d")
+    for result in sorted(p for p in run.rglob("result.json")
+                         if "__" in p.parent.name and not aside.search(str(p))):
         r = json.loads(result.read_text())
         if not r.get("finished_at"):
             continue

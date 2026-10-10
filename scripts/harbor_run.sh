@@ -10,6 +10,8 @@
 #   --split dev|eval     task split (default: eval; env SPLIT also works)
 #   --mode oracle|nop    shorthand for `--agent oracle|nop`
 #   --only ID[,ID...]    run only these tasks (must belong to the split)
+#   --rerun ID[,ID...]   set aside these tasks' earlier attempts in this run and run them again
+#                        (for failures judged to be infrastructure, e.g. a network outage)
 #   --prune-cache        after each task, shrink Docker's build cache to CACHE_KEEP_GB.
 #                        Docker's cache is shared, so this also evicts the least recently
 #                        used cache of other projects (regenerable, but slow to rebuild).
@@ -19,6 +21,11 @@
 #
 # Environment: N_CONCURRENT (default 1), MIN_FREE_GB (default 10), CACHE_KEEP_GB (default 15),
 # DOCKER_DEFAULT_PLATFORM (default linux/amd64), CONFIRM_PAID, CONFIRM_EVAL.
+#
+# Pause and resume: Ctrl+C stops the run; re-running the same command with the same --job-name
+# skips finished tasks and restarts the interrupted one. Tasks whose every trial ended in an
+# exception (Docker or network failure) are rerun automatically: infrastructure errors are
+# never scored (system_architecture.md §10.3). Earlier attempts are kept as <task>.<reason>-<time>/.
 #
 # Disk policy: each task is its own Harbor job under jobs/<run>/<task>/. Harbor deletes each
 # trial's image afterwards (--delete); the build cache keeps rebuilds of the same task fast.
@@ -35,6 +42,7 @@ say() { echo "harbor_run: $*"; }
 SPLIT="${SPLIT:-eval}"
 MODE=""
 ONLY=""
+RERUN=""
 PRUNE=0
 DRY_RUN=0
 PASSTHROUGH=()
@@ -46,6 +54,8 @@ while (($#)); do
         --mode=*) MODE="${1#*=}"; shift ;;
         --only) [[ $# -ge 2 ]] || die "--only needs a value"; ONLY="$2"; shift 2 ;;
         --only=*) ONLY="${1#*=}"; shift ;;
+        --rerun) [[ $# -ge 2 ]] || die "--rerun needs a value"; RERUN="$2"; shift 2 ;;
+        --rerun=*) RERUN="${1#*=}"; shift ;;
         --prune-cache) PRUNE=1; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
         --) shift; PASSTHROUGH+=("$@"); break ;;
@@ -63,6 +73,9 @@ esac
 SPLIT_ARGS="configs/${SPLIT}_tasks.args"
 TUA_ROOT="data/TUA-Bench"
 export DOCKER_DEFAULT_PLATFORM="${DOCKER_DEFAULT_PLATFORM:-linux/amd64}"
+# Harbor imports LiteLLM, which otherwise downloads a price list from GitHub on every start.
+# We never use those prices (costs come from configs/pricing.json), so use its built-in copy.
+export LITELLM_LOCAL_MODEL_COST_MAP="${LITELLM_LOCAL_MODEL_COST_MAP:-True}"
 N_CONCURRENT="${N_CONCURRENT:-1}"
 MIN_FREE_GB="${MIN_FREE_GB:-10}"
 CACHE_KEEP_GB="${CACHE_KEEP_GB:-15}"
@@ -80,6 +93,13 @@ if [[ -n "$ONLY" ]]; then
         printf '%s\n' "${TASKS[@]}" | grep -qx "$id" || die "--only: '$id' is not in the $SPLIT split"
     done
     TASKS=("${wanted[@]}")
+fi
+RERUN_IDS=()
+if [[ -n "$RERUN" ]]; then
+    IFS=',' read -r -a RERUN_IDS <<< "$RERUN"
+    for id in "${RERUN_IDS[@]}"; do
+        printf '%s\n' "${TASKS[@]}" | grep -qx "$id" || die "--rerun: '$id' is not in this run's task list"
+    done
 fi
 ARGS_FILE="$(mktemp "${TMPDIR:-/tmp}/harbor_run_args.XXXXXX")"
 trap 'rm -f "$ARGS_FILE"' EXIT
@@ -168,9 +188,37 @@ mkdir -p "$RUN_DIR"
 n=0
 for id in "${TASKS[@]}"; do
     n=$((n + 1))
-    if [[ -d "$RUN_DIR/$id" ]] && python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("finished_at") else 1)' "$RUN_DIR/$id/result.json" 2>/dev/null; then
-        say "[$n/${#TASKS[@]}] $id already finished in this run, skipping"
-        continue
+    if [[ -d "$RUN_DIR/$id" ]]; then
+        # finished | errored (every trial raised an exception) | interrupted (job never finished)
+        state="$(python3 - "$RUN_DIR/$id" <<'PYEOF'
+import json, sys
+from pathlib import Path
+job = Path(sys.argv[1])
+try:
+    finished = json.loads((job / "result.json").read_text()).get("finished_at")
+except (OSError, ValueError):
+    finished = None
+trials = [json.loads(p.read_text()) for p in job.glob("*__*/result.json")]
+if not finished:
+    print("interrupted")
+elif trials and all(t.get("exception_info") for t in trials):
+    print("errored")
+else:
+    print("finished")
+PYEOF
+)"
+        if [[ " ${RERUN_IDS[*]+${RERUN_IDS[*]}} " == *" $id "* ]]; then
+            state="rerun"
+        fi
+        if [[ "$state" == "finished" ]]; then
+            say "[$n/${#TASKS[@]}] $id already finished in this run, skipping"
+            continue
+        fi
+        # Harbor would treat an interrupted or errored trial as done on resume, so keep the old
+        # attempt aside (logs intact) and start the task fresh.
+        aside="$RUN_DIR/$id.$state-$(date +%Y%m%d-%H%M%S)"
+        mv "$RUN_DIR/$id" "$aside"
+        say "[$n/${#TASKS[@]}] $id: earlier attempt $state; moved to $(basename "$aside") and rerunning"
     fi
     fg=$(free_gb)
     (( fg >= MIN_FREE_GB )) || die "stopping before $id: ${fg} GB free < MIN_FREE_GB=${MIN_FREE_GB}. Free space (or use --prune-cache), then re-run with --job-name $run_id to resume."
