@@ -151,6 +151,7 @@ bash scripts/harbor_run.sh --split dev --mode oracle                          # 
 bash scripts/harbor_run.sh --split dev --mode oracle --only 003-rebuild-energy-model
 bash scripts/harbor_run.sh --split eval --mode oracle --prune-cache -- --job-name eval-oracle-gate
 python3 scripts/summarize_run.py jobs/eval-oracle-gate                         # one table for the run
+python3 scripts/export_run.py jobs/eval-oracle-gate results/oracle-gate/eval  # curated logs into git
 ```
 
 * `--only ID[,ID…]` runs part of a split.

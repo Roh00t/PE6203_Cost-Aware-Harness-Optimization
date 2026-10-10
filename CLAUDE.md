@@ -4,6 +4,7 @@ Guidance for people and coding assistants working on this repository.
 
 **Project.** PE6203 CA2, Group Project 5: a cost-aware agent harness for TUA-Bench. We maximise the success rate of a fixed, cheap, open-weight model per dollar, and compare against a default-harness baseline and an expensive-model baseline on the accuracy–cost plane.
 
+- **Current status, decisions so far and next steps: [docs/STATUS.md](docs/STATUS.md). Read it first in a new session.**
 - Design: [system_architecture.md](system_architecture.md)
 - Safety rules: [guardrails.md](guardrails.md)
 - Assignment brief: the PDF in the repo root
