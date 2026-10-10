@@ -280,7 +280,8 @@ results/pareto.png                # accuracy–cost plot with frontier
 
 ### 10.1 Before any model run
 1. **Oracle gate (free, no model):** run `scripts/harbor_run.sh --agent oracle` on **both** splits.
-   - Any eval task whose reference solution does not reach reward 1 on our machines is replaced by the next reserve of its family and logged in `configs/subset_amendments.json`.
+   - An eval task whose reference solution does not reach reward 1 for an **infrastructure or environment** reason (the task cannot be passed by any agent on our machines: a live website that changed or redirects, a grader that cannot read a correct output, an image that will not build) is replaced by the next reserve of its family and logged in `configs/subset_amendments.json`. The replacement must pass the oracle too (`--split reserve`).
+   - Upstream bugs in a reference solution that agents can still work around stay in, as does a continuous metric that scores the oracle below 1. Both are listed in the report.
    - The oracle uses no model, so this does not peek at model results.
    - Then set `"frozen": true`.
 2. **Model selection** on the dev split (§7.3).

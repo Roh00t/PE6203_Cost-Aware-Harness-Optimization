@@ -18,7 +18,7 @@ Guidance for people and coding assistants working on this repository.
 - **Fixed model and decoding.** Model, pinned OpenRouter provider, temperature and reasoning effort live in `configs/models/*.yaml` and are identical for every configuration. Once frozen, they never change.
 - **Every model call goes through OpenRouter and is logged** (`calls.jsonl`, with `purpose`). An unlogged call is a bug. Costs come from `configs/pricing.json`, never from mini-swe-agent's own cost field.
 - **Develop on the dev split (`--split dev`) only.** The 40 eval tasks are run only for recorded results, never for debugging or tuning.
-- **The subset is frozen.** `configs/task_subset.json` changes only through the oracle gate (`configs/subset_amendments.json`), before the first model run. Its eval fingerprint must stay `08cef02483250faee37a4e7d599fe9c8998b8ca256dfeb3de8455babf0687524`.
+- **The subset is frozen** (2026-10-10, `"frozen": true`). `configs/task_subset.json` stays exactly as sampled: its eval fingerprint must stay `08cef02483250faee37a4e7d599fe9c8998b8ca256dfeb3de8455babf0687524`. The oracle-gate swaps live only in `configs/subset_amendments.json`; `scripts/task_list.py eval` applies them, and `harbor_run.sh --split eval` runs that list. Final eval fingerprint: `973635ea4e6a477e2fbfffd1045494cb69e0678c02ceea2276c56c63fa0468b8`. No more amendments.
 - **Every harness feature sits behind a component flag (C0–C5)** so it can be ablated alone. The baselines B0 and E use the stock harness with its **default settings**: no step cap, no cost cap. Never add limits to them. The per-task budget (S steps, B_task dollars) belongs to our variants through C3.
 
 ## Ask the user first
@@ -36,7 +36,8 @@ scripts/harbor_run.sh --split dev --mode oracle          # free: reference solut
 scripts/harbor_run.sh --split eval --mode oracle --dry-run   # checks only, prints the Harbor command
 CONFIRM_PAID=1 scripts/harbor_run.sh --split dev -- --agent <agent> --model openrouter/<id>   # paid: ask first
 uv run python scripts/check_harbor_filter.py configs/eval_tasks.args
-python3 scripts/sample_tasks.py                          # must reproduce the fingerprint above
+python3 scripts/sample_tasks.py --out-dir /tmp/subset-check   # must reproduce the sampled fingerprint
+python3 scripts/task_list.py eval --fingerprint          # must print the final fingerprint above
 docker compose run --rm harness scripts/harbor_run.sh …  # same toolchain in a container
 ```
 
@@ -47,11 +48,11 @@ docker compose run --rm harness scripts/harbor_run.sh …  # same toolchain in a
 | Path | What |
 |---|---|
 | `configs/` | Subset (`task_subset.json`, `*.args`), family labels, amendments. Planned: `pricing.json`, `models/`, `harness/` |
-| `scripts/` | Subset generation, Harbor filter check, run wrapper |
+| `scripts/` | Subset generation, amended task lists (`task_list.py`), Harbor filter check, run wrapper, run summary/export |
 | `harness/` | *Planned:* host-side harness (Harbor `BaseAgent` + mini-swe-agent `DefaultAgent` subclass), components C1–C5, guardrails, OpenRouter gateway |
 | `data/TUA-Bench/` | Pinned benchmark checkout (git-ignored, read-only) |
 | `jobs/` | Raw Harbor output (git-ignored) |
-| `results/` | *Planned:* curated, committed logs behind every reported number |
+| `results/` | Curated, committed logs behind every reported number (`oracle-gate/` so far) |
 
 ## Conventions
 
@@ -65,3 +66,5 @@ docker compose run --rm harness scripts/harbor_run.sh …  # same toolchain in a
 
 - Docker Desktop needs at least 10 GB of memory (Scientific tasks request 8 GB each). Disk use is dominated by Docker's build cache, not images: 10 dev tasks added about 26 GB, and deleting their images freed nothing. Run long jobs with `--prune-cache` (after asking), and keep at least 25 GB free.
 - On Apple Silicon, task images build and run under amd64 emulation. First builds of Scientific images are slow; the oracle gate shows how slow.
+- On Windows, work inside WSL2 Ubuntu with the repo in the Linux home (a `/mnt/c` checkout gets CRLF scripts). Docker's memory comes from `%UserProfile%\.wslconfig`. Linux bind mounts keep real file ownership, which is why `harbor_run.sh` sets `umask 000`: without it the task's `agent` user (uid 1001) cannot write Harbor's log files and every trial loses its reward.
+- Browser tasks hit live websites, which drift and redirect by region (Singapore here). A browser task that fails on a machine where others passed is more likely the site than the harness; check the trial's artifacts before blaming the agent.

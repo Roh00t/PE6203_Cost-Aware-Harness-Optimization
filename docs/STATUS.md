@@ -1,6 +1,6 @@
 # Project Status and Handoff
 
-Last updated **2026-10-10** (Rohit's Mac). Read this first when picking the project up on another machine or in a new Claude Code session, then [`CLAUDE.md`](../CLAUDE.md) and [`system_architecture.md`](../system_architecture.md).
+Last updated **2026-10-10 evening** (Rohit's Windows laptop, WSL2). Read this first when picking the project up on another machine or in a new Claude Code session, then [`CLAUDE.md`](../CLAUDE.md) and [`system_architecture.md`](../system_architecture.md).
 
 > **For a new Claude Code session:** this file holds the context of the earlier sessions. Start with: *"Read docs/STATUS.md, CLAUDE.md and system_architecture.md, then continue from 'Next steps'."*
 
@@ -10,35 +10,33 @@ Last updated **2026-10-10** (Rohit's Mac). Read this first when picking the proj
 
 | Area | Status |
 |---|---|
-| Evaluation subset | **Done.** 40 eval + 10 dev tasks, fingerprint `08cef024…` ([README](../README.md#evaluation-subset)) |
-| Run tooling | **Done.** `scripts/harbor_run.sh` (per-task jobs, pause/resume, `--only`, `--rerun`, asset/memory/disk checks, paid-run gates), `summarize_run.py`, `export_run.py` |
+| Evaluation subset | **Done and frozen** (2026-10-10). 40 eval + 10 dev tasks. Sampled fingerprint `08cef024…`; after the oracle-gate swaps the **final eval fingerprint is `973635ea…`** (§2) |
+| Run tooling | **Done.** `scripts/harbor_run.sh` (per-task jobs, pause/resume, `--only`, `--rerun`, `--split dev|eval|reserve`, asset/memory/disk checks, paid-run gates), `task_list.py`, `summarize_run.py`, `export_run.py`. Works on macOS and on Windows via WSL2 |
 | Design docs | **Done**, checked line by line against the brief. `guardrails.md` §8 waits for the lecture slides |
 | Dev oracle check | **Done: 9/10.** `100-name-mountain-photos` fails because of a bug in the benchmark's reference solution (agents can still solve it). Logs: `results/oracle-gate/dev-mac*/` |
-| Eval oracle gate | **In progress: 28 of 40 settled, 12 to run on an x86 machine** (§2) |
+| Eval oracle gate | **Done.** 40/40 settled on Mac + x86, 4 tasks swapped for reserves that pass (§2). Logs: `results/oracle-gate/eval-mac/`, `eval-x86/`, `reserve-x86/` |
 | Model choice, B_task, harness code, experiments, report | Not started. Owners and dates in §4 |
 
-Team progress page: https://claude.ai/artifact/D1a8FLLj5aqiAAeXWSBWSN
+Overall about **32 %** of the weighted plan (foundations done; harness, experiments and report are the remaining 68 %). Model spend so far: **$0.00**.
+
+Team progress page: https://claude.ai/artifact/D1a8FLLj5aqiAAeXWSBWSN (still shows Fri 9 Oct numbers)
 
 ---
 
-## 2. Eval oracle gate (reference solutions on the 40 eval tasks)
+## 2. Eval oracle gate: final result
 
-Mac run `eval-oracle-gate`, exported to `results/oracle-gate/eval-mac/`.
+Reference solutions on all 40 eval tasks: 28 settled on the Mac (`eval-oracle-gate`), the 12 left open (network outage, browser/OCR trouble under emulation) rerun on an x86 Windows laptop (`eval-oracle-gate-x86`). Swap rule (Rohit): swap **only** for infrastructure/environment failures, i.e. when no agent could pass the task on our machines.
 
-| Group | Tasks | Cause | Decision |
-|---|---|---|---|
-| Passed (26) | 000, 006, 008, 011, 015, 016, 037, 040, 041, 047, 052, 057, 068, 073, 074, 075, 076, 080, 085, 087, 088, 089, 099, 101, 102, 117 | n/a | Locked in |
-| Reference-solution bug (2) | 004-place-heater-for-sensors, 019-prostate-red-overlay | The solution reads `/tests/reference/…`, which Harbor only uploads after the agent finishes | **Keep.** Not an infrastructure failure, and agents can still solve them |
-| Network outage on the Mac (7) | 105-search-cell-b6, 110-rotate-macintosh-video, 111-set-video-wallpaper, 112-capture-video-frame, 114-nuclei-csv-open, 115-remove-explorer-find-key, 116-bottom-left-page-numbers | Internet dropped ~17:14 SGT (Docker could not resolve `registry-1.docker.io`) | **Rerun** on x86 |
-| Browser/OCR failures on the Mac (5) | 032-compare-iphones, 036-license-eligibility, 042-black-sale-coffee-makers, 046-restore-tripadvisor-tab, 069-linux-ls-tutorial | Chrome timed out or failed to start (e.g. "Timed out connecting to Chromium over CDP"); Tesseract OCR read a clean image as empty. Most likely Apple Silicon's x86 emulation | **Recheck** on x86 |
+| Outcome | Tasks |
+|---|---|
+| Passed, reward 1 (31) | 000, 006, 008, 011, 015, 016, 036, 037, 040, 041, 047, 052, 057, 068, 073, 074, 075, 076, 080, 085, 087, 088, 089, 099, 101, 102, 105, 114, 115, 116, 117 |
+| Kept, reference-solution bug (3) | 004-place-heater-for-sensors, 019-prostate-red-overlay (solution reads `/tests/reference/` before Harbor uploads it); **110-rotate-macintosh-video** (solution flips both axes, gold is a vertical flip only; checked: the oracle output flipped back matches gold, so agents can pass) |
+| Kept, continuous metric (2) | 111-set-video-wallpaper (0.83), 112-capture-video-frame (0.85): SSIM image similarity, never exactly 1 |
+| **Swapped** (4) | 032-compare-iphones → **077-corresponding-scholar-url** (Apple redirects the compare URL to the home page) · 042-black-sale-coffee-makers → **039-manchester-forecast** (Google Shopping no longer shows the graded filter chips) · 046-restore-tripadvisor-tab → **113-add-folders-workspace** (every tab times out, Airbnb redirects to `.com.sg`) · 069-linux-ls-tutorial → **071-paste-image-docx** (grader's OCR reads a clean image as empty, on Mac and x86) |
 
-**Swap rule (decided by Rohit):** swap an eval task for the next reserve of its family **only for infrastructure/environment failures**. Upstream benchmark bugs stay in and are noted in the report.
+All four replacements passed the oracle (`results/oracle-gate/reserve-x86/`). Causes and evidence per swap: [`configs/subset_amendments.json`](../configs/subset_amendments.json), now `"frozen": true`. The final list per family is in the [README](../README.md#evaluation-subset). Report these numbers in the method section: oracle ceiling on the final subset is 35 full passes + 2 partial (0.83, 0.85) + 3 known reference bugs.
 
-**How the x86 results will be read:**
-- Passes on x86 → keep the task. Browser and OCR-graded tasks then run on x86 laptops in the eval phase.
-- Fails on x86 too → swap it for the next reserve (`configs/task_subset.json` → `families.<family>.reserve`, in order) and log it in `configs/subset_amendments.json`.
-
-After that, set `"frozen": true` in `configs/subset_amendments.json`. No changes to the subset after the first model run.
+**How the swaps are applied.** `task_subset.json` and `eval_tasks.args` stay exactly as sampled (fingerprint `08cef024…`). `scripts/task_list.py eval` applies the amendments (and refuses any swap that isn't the next unused reserve of the family), and `harbor_run.sh --split eval` runs that list. `--split reserve` exists only for oracle checks of replacements.
 
 ---
 
@@ -53,124 +51,110 @@ After that, set `"frozen": true` in `configs/subset_amendments.json`. No changes
 | Model pilot uses **B0** on the dev split (no code needed) | architecture §7.3 |
 | Shortlist: gpt-oss-20b (base) / gpt-oss-120b (expensive); final pick from the pilot | architecture §7.2 |
 | All task images build as `linux/amd64`; one trial at a time unless memory allows more | README, `harbor_run.sh` |
+| Oracle-gate swaps only for infrastructure/environment failures; subset frozen 2026-10-10 | architecture §10.1, `subset_amendments.json` |
 | `CLAUDE.md` is for developers; `agent_instructions.md` is the evaluated agent's prompt | both files |
 
 **Open:** final model pair and B_task (Ulfa, after the pilot); `guardrails.md` §8 (needs the lecture slides).
 
 ---
 
-## 4. Roles and next dates
+## 4. Roles and next steps
 
 | Person | Role | Next deliverable |
 |---|---|---|
-| Rohit | Lead: infrastructure, integration, C0 prompt, freeze, presentation | Finish the eval oracle gate on x86 and freeze the subset (§5) |
-| Abin | Harness core: agent, container adapter, gateway and logs, H0 parity, C1, C3 | Hook interfaces by Tue 13 Oct, H0 parity Wed 14 |
-| Isha | Guardrails with tests, C2/C4/C5, task-leak check, false-positive review, guardrails §8 | Guardrail rules and leak check now; components after Abin's interfaces |
-| Ulfa | Price table, model pilot (B0 on dev), B_task, cost and statistics scripts, results section | Pilot and frozen model configs by Mon 12 Oct |
+| Rohit | Lead: infrastructure, integration, C0 prompt, freeze, presentation | Oracle gate **done**. Next: kickoff Mon 12 (three interfaces), multi-config job runner, lecture slides to Isha |
+| Abin | Harness core: agent, container adapter, gateway and logs, H0 parity, C1, C3 | Laptop setup now; hook interfaces by Tue 13 Oct, H0 parity Wed 14 |
+| Isha | Guardrails with tests, C2/C4/C5, task-leak check, false-positive review, guardrails §8 | Laptop setup now; guardrail rules + leak check (no dependencies) this weekend |
+| Ulfa | Price table, model pilot (B0 on dev), B_task, cost and statistics scripts, results section | Laptop setup now; `pricing.json` and pilot (~$0.30, dev split only), frozen model configs by Mon 12 Oct |
 
 Kickoff on **Mon 12 Oct** agrees three interfaces: loop hook points, log fields, and the harness config format. Harness v1 freezes **Fri 16 Oct**, eval runs **16–19 Oct**, report **by 22 Oct**, presentation **23 Oct**.
 
+Things learned on x86 that matter for everyone's runs:
+
+- **Browser tasks depend on live sites.** Three of the four swaps were websites that changed or redirect from Singapore. If a browser task fails on one laptop but passed the oracle here, look at the trial's `artifacts/` before blaming the harness.
+- **Linux/WSL hosts need `umask 000`** (now set in `harbor_run.sh`). Without it the task's `agent` user can't write Harbor's log files and every trial ends without a reward. Anyone writing a new runner must keep this.
+- Image builds dominate time: 1–15 min per task on first build (Scientific and LibreOffice images are the slowest).
+
 ---
 
-## 5. Continuing on a Windows laptop
+## 5. Setting up a laptop
 
-Everything below runs inside **WSL2 (Ubuntu)**. `data/` and `jobs/` are never pulled from git:
-
-- `data/` is rebuilt with the commands in step 3;
-- `jobs/` is created fresh by every run;
-- curated logs travel through git in `results/`.
+macOS and Linux: follow the README "Team Setup". Windows: everything runs inside **WSL2 (Ubuntu)**; tested on 2026-10-10 on a 16 GB Windows 11 laptop. `data/` and `jobs/` are never pulled from git.
 
 ### Step 1: Windows prerequisites (once)
 
-You need at least 16 GB RAM, at least 40 GB free on `C:`, and virtualisation enabled in the BIOS.
+At least 16 GB RAM, 40 GB free on `C:`, virtualisation enabled in the BIOS, and Docker Desktop installed.
 
-1. In **PowerShell as administrator**, install WSL with Ubuntu, then reboot and create your Linux user when Ubuntu opens:
+1. In PowerShell, install Ubuntu and create your Linux user when it asks:
 
    ```powershell
    wsl --install -d Ubuntu
    ```
 
-2. Install **Docker Desktop for Windows**, then set:
-   - Settings → General: turn on **Use the WSL 2 based engine**;
-   - Settings → Resources → WSL integration: turn on **Ubuntu**.
+2. Docker Desktop → Settings → Resources → **WSL integration**: turn on **Ubuntu**, Apply & Restart.
 
-3. Give Docker enough memory. Create `C:\Users\<you>\.wslconfig` containing the lines below. Use `memory=10GB` if the laptop has exactly 16 GB of RAM.
+3. Give Docker 10 GB. On WSL2, Docker's memory comes from `C:\Users\<you>\.wslconfig`, **not** the Docker Desktop slider. Create that file with:
 
    ```ini
    [wsl2]
-   memory=12GB
-   processors=6
+   memory=10GB
    ```
 
-4. Restart WSL, then restart Docker Desktop:
+4. Apply it: quit Docker Desktop, run the command below, then start Docker Desktop again. `docker info` should then report about 10 GB (`MemTotal` ≈ 10.4e9).
 
    ```powershell
    wsl --shutdown
    ```
 
-### Step 2: Tools inside Ubuntu (once)
+### Step 2: Inside Ubuntu (once)
 
-Open the **Ubuntu** app and install git, curl and Python:
-
-```bash
-sudo apt update && sudo apt install -y git curl python3
-```
-
-Install uv:
+Ubuntu already has git, curl and python3. Install uv and put it on your path:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Put uv on your path in this terminal:
-
 ```bash
 source $HOME/.local/bin/env
 ```
 
-Check that Docker is reachable from WSL. It should print a version, not an error:
+Check Docker is reachable (prints a version):
 
 ```bash
 docker version --format '{{.Server.Version}}'
 ```
 
-### Step 3: Get the code and rebuild `data/` (once)
+### Step 3: Code and benchmark (once)
 
-Clone into your Linux home folder, **not** under `/mnt/c`. Windows folders can break the scripts' line endings and slow Docker down.
+Clone into the Linux home, **not** under `/mnt/c` (a Windows checkout gets CRLF line endings and the scripts fail):
 
 ```bash
 cd ~ && git clone https://github.com/Roh00t/PE6203_Cost-Aware-Harness-Optimization.git
 ```
 
-Enter the repo and install its Python environment:
-
 ```bash
 cd ~/PE6203_Cost-Aware-Harness-Optimization && uv sync --frozen
 ```
-
-Clone the benchmark:
 
 ```bash
 git clone https://github.com/facebookresearch/TUA-Bench data/TUA-Bench
 ```
 
-Pin it to the subset's commit:
-
 ```bash
 git -C data/TUA-Bench checkout 3497fd320abcafaf4797424192c891a593fd7964
 ```
 
-Install the benchmark's environment and download its assets (~0.9 GB, about 10 minutes):
+About 0.9 GB of assets, roughly 10 minutes:
 
 ```bash
 (cd data/TUA-Bench && uv sync --frozen && uv run setup-env)
 ```
 
-Create `.env`. No keys are needed for oracle runs.
-
 ```bash
 cp .env.example .env
 ```
+
+Then put **your own** `OPENROUTER_API_KEY` (created with a credit limit) in `.env`. Oracle runs need no key.
 
 ### Step 4: Check the setup
 
@@ -192,44 +176,24 @@ uv run python scripts/check_harbor_filter.py configs/eval_tasks.args
 uv run python scripts/check_harbor_filter.py configs/dev_tasks.args
 ```
 
-This must print `eval fingerprint 08cef02483250faee37a4e7d599fe9c8998b8ca256dfeb3de8455babf0687524`:
+Sampled fingerprint, must print `08cef02483250faee37a4e7d599fe9c8998b8ca256dfeb3de8455babf0687524`:
 
 ```bash
 python3 scripts/sample_tasks.py --out-dir /tmp/subset-check | grep fingerprint
 ```
 
-Smoke test (free, about 2 minutes, expect reward 1.0):
+Final eval fingerprint, must print `973635ea4e6a477e2fbfffd1045494cb69e0678c02ceea2276c56c63fa0468b8`:
 
 ```bash
-bash scripts/harbor_run.sh --split dev --mode oracle --only 106-create-charles-ssh-user -- --job-name smoke-x86
+python3 scripts/task_list.py eval --fingerprint
 ```
 
-### Step 5: Run the 12 unresolved eval tasks
-
-Free, roughly 30–60 minutes on x86:
+Smoke test, free, about 3 minutes, expect reward 1.0:
 
 ```bash
-bash scripts/harbor_run.sh --split eval --mode oracle --only 032-compare-iphones,036-license-eligibility,042-black-sale-coffee-makers,046-restore-tripadvisor-tab,069-linux-ls-tutorial,105-search-cell-b6,110-rotate-macintosh-video,111-set-video-wallpaper,112-capture-video-frame,114-nuclei-csv-open,115-remove-explorer-find-key,116-bottom-left-page-numbers -- --job-name eval-oracle-gate-x86
+bash scripts/harbor_run.sh --split dev --mode oracle --only 106-create-charles-ssh-user -- --job-name smoke
 ```
 
-To pause, press Ctrl+C. To resume, run the same command. If the network drops, rerun with `--rerun <ids>` (see the README).
+### Step 5: Claude Code
 
-### Step 6: Bring the results back through git
-
-Export the run's logs into `results/` (no browser profiles, refuses if it finds an API key):
-
-```bash
-python3 scripts/export_run.py jobs/eval-oracle-gate-x86 results/oracle-gate/eval-x86
-```
-
-Print the summary table:
-
-```bash
-python3 scripts/summarize_run.py jobs/eval-oracle-gate-x86
-```
-
-Then commit and push `results/oracle-gate/eval-x86`, and pull on the Mac (or continue on Windows). Next: apply the §2 rule, write `configs/subset_amendments.json`, and freeze the subset.
-
-### Step 7: Continue with Claude Code on Windows
-
-Install Claude Code inside WSL (see https://docs.claude.com/en/docs/claude-code), start it in `~/PE6203_Cost-Aware-Harness-Optimization`, and give it the first message suggested at the top of this file. It reads `CLAUDE.md` automatically. This file gives it the history.
+Start Claude Code in `~/PE6203_Cost-Aware-Harness-Optimization` (inside WSL, or from Windows with commands run through `wsl -d Ubuntu -- …`) and give it the first message suggested at the top of this file.

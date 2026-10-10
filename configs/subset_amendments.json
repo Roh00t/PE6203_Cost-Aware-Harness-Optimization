@@ -1,5 +1,63 @@
 {
-  "_rule": "Before any model run, every eval task is run with Harbor's oracle agent. If an oracle trial does not reach reward 1 for an infrastructure reason (image build failure, emulation crash, missing asset, unreachable website), the task is replaced by the first unused reserve task of the same family (families.<family>.reserve in task_subset.json, in rank order) and logged below. The subset is frozen once the first model run starts; no amendments after that.",
-  "frozen": false,
-  "amendments": []
+  "_rule": "Before any model run, every eval task is run with Harbor's oracle agent. If an oracle trial does not reach reward 1 for an infrastructure or environment reason (image build failure, emulation crash, missing asset, a live website that changed or is unreachable, a grader that cannot read a correct output), the task is replaced by the first unused reserve task of the same family (families.<family>.reserve in task_subset.json, in rank order) and logged below. The replacement must reach reward 1 with the oracle as well. Upstream reference-solution bugs that agents can work around, and continuous metrics that score the oracle below 1, stay in and are reported. scripts/task_list.py applies and validates these amendments. The subset is frozen once the first model run starts; no amendments after that.",
+  "frozen": true,
+  "frozen_on": "2026-10-10",
+  "final_eval_fingerprint": "973635ea4e6a477e2fbfffd1045494cb69e0678c02ceea2276c56c63fa0468b8",
+  "amendments": [
+    {
+      "removed": "032-compare-iphones",
+      "added": "077-corresponding-scholar-url",
+      "family": "Web & Information",
+      "cause": "Live website changed: Apple now redirects the iPhone 13/14/15 Pro Max compare URL to apple.com/, so the expected modelList can never be read. On the Mac, Chrome also timed out over CDP.",
+      "evidence": "results/oracle-gate/eval-x86/032-compare-iphones (reward 0, active_url.txt = https://www.apple.com/); replacement passed in results/oracle-gate/reserve-x86/077-corresponding-scholar-url"
+    },
+    {
+      "removed": "042-black-sale-coffee-makers",
+      "added": "039-manchester-forecast",
+      "family": "Web & Information",
+      "cause": "Live website changed: the oracle reaches the correct Google Shopping query, but the filter chips the grader looks for (Black, On sale, $25 - $60) are no longer on the page, so class_score is 0 for any agent.",
+      "evidence": "results/oracle-gate/eval-x86/042-black-sale-coffee-makers (url_score 1, class_score 0); replacement passed in results/oracle-gate/reserve-x86/039-manchester-forecast"
+    },
+    {
+      "removed": "046-restore-tripadvisor-tab",
+      "added": "113-add-folders-workspace",
+      "family": "System & Software Operations",
+      "cause": "Live websites unreachable from the task container: every tab hit 'Load timeout' and airbnb.com redirects to airbnb.com.sg, so is_expected_tabs fails for any agent. On the Mac, Chrome failed to start.",
+      "evidence": "results/oracle-gate/eval-x86/046-restore-tripadvisor-tab (reward 0, open_tabs.json); replacement passed in results/oracle-gate/reserve-x86/113-add-folders-workspace"
+    },
+    {
+      "removed": "069-linux-ls-tutorial",
+      "added": "071-paste-image-docx",
+      "family": "Office & Productivity",
+      "cause": "Grader cannot read a correct output: Tesseract OCR returns no text for the solution's clean, large 'ls' image, identically on the Mac (arm64 emulation) and on x86, so no agent can pass.",
+      "evidence": "results/oracle-gate/eval-x86/069-linux-ls-tutorial (reward 0, 'OCR extracted texts: []'); results/oracle-gate/eval-mac/069-linux-ls-tutorial; replacement passed in results/oracle-gate/reserve-x86/071-paste-image-docx"
+    }
+  ],
+  "kept_below_reward_1": [
+    {
+      "task": "004-place-heater-for-sensors",
+      "oracle_reward": 0.0,
+      "reason": "Upstream reference-solution bug: solve.sh reads /tests/reference/, which Harbor uploads only after the agent finishes. Agents can still solve the task."
+    },
+    {
+      "task": "019-prostate-red-overlay",
+      "oracle_reward": 0.0,
+      "reason": "Upstream reference-solution bug: solve.sh reads /tests/reference/, which Harbor uploads only after the agent finishes. Agents can still solve the task."
+    },
+    {
+      "task": "110-rotate-macintosh-video",
+      "oracle_reward": 0.0,
+      "reason": "Upstream reference-solution bug: solve.sh applies hflip+vflip, but the gold video is a vertical flip only. The oracle output flipped horizontally matches gold (3 of 100 frames over the pHash threshold, 5 allowed), so an agent that flips vertically passes."
+    },
+    {
+      "task": "111-set-video-wallpaper",
+      "oracle_reward": 0.833,
+      "reason": "Continuous metric: rescaled SSIM against a reference frame; the oracle's frame differs slightly. Same on every machine."
+    },
+    {
+      "task": "112-capture-video-frame",
+      "oracle_reward": 0.851,
+      "reason": "Continuous metric: raw SSIM against a reference frame. Same on every machine."
+    }
+  ]
 }

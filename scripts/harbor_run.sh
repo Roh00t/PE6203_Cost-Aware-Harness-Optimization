@@ -63,29 +63,36 @@ while (($#)); do
     esac
 done
 
-[[ "$SPLIT" == "dev" || "$SPLIT" == "eval" ]] || die "--split must be dev or eval, got '$SPLIT'"
+[[ "$SPLIT" == "dev" || "$SPLIT" == "eval" || "$SPLIT" == "reserve" ]] \
+    || die "--split must be dev, eval or reserve, got '$SPLIT'"
 case "$MODE" in
     "") ;;
     oracle|nop) PASSTHROUGH=(--agent "$MODE" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}") ;;
     *) die "--mode supports oracle|nop; pass model agents after -- (e.g. -- --agent mini-swe-agent --model ...)" ;;
 esac
 
-SPLIT_ARGS="configs/${SPLIT}_tasks.args"
 TUA_ROOT="data/TUA-Bench"
 export DOCKER_DEFAULT_PLATFORM="${DOCKER_DEFAULT_PLATFORM:-linux/amd64}"
 # Harbor imports LiteLLM, which otherwise downloads a price list from GitHub on every start.
 # We never use those prices (costs come from configs/pricing.json), so use its built-in copy.
 export LITELLM_LOCAL_MODEL_COST_MAP="${LITELLM_LOCAL_MODEL_COST_MAP:-True}"
+# On a Linux host (WSL2 included) bind mounts keep real ownership. Harbor pre-creates log files
+# such as agent/oracle.txt on the host, and the task's `agent` user (uid 1001 in ubuntu:24.04
+# images, which already have a uid-1000 `ubuntu` user) cannot write them under the usual 022
+# umask: the oracle exits 1 and no reward is written. Docker Desktop on macOS hides ownership,
+# so this is a no-op there.
+umask 000
 N_CONCURRENT="${N_CONCURRENT:-1}"
 MIN_FREE_GB="${MIN_FREE_GB:-10}"
 CACHE_KEEP_GB="${CACHE_KEEP_GB:-15}"
 
-[[ -f "$SPLIT_ARGS" ]] || die "no $SPLIT_ARGS; run scripts/sample_tasks.py"
 [[ -d "$TUA_ROOT/tasks" ]] || die "missing $TUA_ROOT; see README 'Team setup'"
 
-# Task list for this run: the split, optionally narrowed by --only.
+# Task list for this run: the split (eval with the oracle-gate swaps from
+# configs/subset_amendments.json applied), optionally narrowed by --only.
 TASKS=()
-while read -r flag id; do [[ "$flag" == "-i" ]] && TASKS+=("$id"); done < "$SPLIT_ARGS"
+split_ids="$(python3 scripts/task_list.py "$SPLIT")" || die "could not resolve the $SPLIT split"
+while read -r id; do [[ -n "$id" ]] && TASKS+=("$id"); done <<< "$split_ids"
 if [[ -n "$ONLY" ]]; then
     wanted=()
     IFS=',' read -r -a wanted <<< "$ONLY"
@@ -125,6 +132,7 @@ for ((i = 0; i < ${#PASSTHROUGH[@]}; i++)); do
 done
 [[ -n "$agent" || $custom_agent -eq 1 ]] || die "no agent given; use --mode oracle or pass --agent/--agent-import-path after --"
 if [[ $custom_agent -eq 1 || ( "$agent" != "oracle" && "$agent" != "nop" ) ]]; then
+    [[ "$SPLIT" != "reserve" ]] || die "the reserve split is for oracle-gate checks only (--mode oracle|nop)"
     [[ "${CONFIRM_PAID:-}" == "1" ]] || die "this run calls a paid model; re-run with CONFIRM_PAID=1 once the cost estimate is agreed"
     if [[ "$SPLIT" == "eval" ]]; then
         [[ "${CONFIRM_EVAL:-}" == "1" ]] || die "paid runs on the eval split are for recorded results only; set CONFIRM_EVAL=1 to proceed"

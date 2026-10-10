@@ -66,17 +66,22 @@ Every configuration (default-harness baseline, each ablation, our harness, and t
 
 * **Families:** `task.toml` only has a fine-grained `category`, so the five families and 20 subcategories are parsed from the paper's Appendix B ([arXiv 2606.28480v1](https://arxiv.org/html/2606.28480v1)) into [`configs/task_families.json`](configs/task_families.json). The parse is checked against `dataset.toml`, and the population is Office 46 / Web 22 / System 19 / Scientific 17 / Multimedia 16.
 * **Sampling:** within each family, tasks are ranked by `sha256("tua-subset-v1:42:<task_id>")`. Ranks 1–8 are the **eval** split, ranks 9–10 the **dev** split (used only for harness development and model pilots), and the rest are ordered **reserves**. Hash ranking gives the same output on Python 3.11, 3.12 and 3.14, which `random.sample` does not guarantee.
-* **Eval fingerprint:** `08cef02483250faee37a4e7d599fe9c8998b8ca256dfeb3de8455babf0687524`
-* **Substitution rule:** before any model run, the oracle agent runs on all 40 tasks. A task that fails for an infrastructure reason is replaced by the next reserve in its family and logged in [`configs/subset_amendments.json`](configs/subset_amendments.json). The subset is frozen once the first model run starts.
+* **Eval fingerprint (as sampled):** `08cef02483250faee37a4e7d599fe9c8998b8ca256dfeb3de8455babf0687524`. `sample_tasks.py` must always reproduce it.
+* **Substitution rule:** before any model run, the oracle agent runs on all 40 tasks. A task that fails for an infrastructure or environment reason (no agent could pass it on our machines) is replaced by the next reserve in its family, which must pass the oracle too, and logged in [`configs/subset_amendments.json`](configs/subset_amendments.json). Reference-solution bugs that agents can work around, and continuous metrics that score the oracle below 1, stay in.
+* **Frozen 2026-10-10** after the oracle gate (Mac + x86): 4 swaps, all live-website or grader failures. **Final eval fingerprint: `973635ea4e6a477e2fbfffd1045494cb69e0678c02ceea2276c56c63fa0468b8`** (`python3 scripts/task_list.py eval --fingerprint`). Logs: [`results/oracle-gate/`](results/oracle-gate/).
 * **Reporting:** the headline success rate is the subset mean (equal weight per family). We also report a family-reweighted estimate (46/22/19/17/16 ÷ 120) as a projection to the full benchmark.
+
+Final eval split (swapped-in reserves in **bold**):
 
 | Family | Eval tasks |
 |---|---|
 | Multimedia & Design | 008-find-bird-chase-frames, 076-make-src-gif-clip, 080-convert-novel-epub, 088-extract-presenter-photos, 101-rearrange-warm-tiles, 110-rotate-macintosh-video, 111-set-video-wallpaper, 112-capture-video-frame |
-| Office & Productivity | 016-count-invoice-pivot, 068-strike-first-two-lines, 069-linux-ls-tutorial, 074-apa-references-review, 087-spreadsheet-to-doc-table, 102-daily-email-report, 116-bottom-left-page-numbers, 117-comma-text-to-table |
+| Office & Productivity | 016-count-invoice-pivot, 068-strike-first-two-lines, **071-paste-image-docx**, 074-apa-references-review, 087-spreadsheet-to-doc-table, 102-daily-email-report, 116-bottom-left-page-numbers, 117-comma-text-to-table |
 | Scientific & Engineering | 000-count-nuclei, 004-place-heater-for-sensors, 006-extract-gym-auditorium, 011-epw-parquet-check, 015-gym-auditorium-sim, 019-prostate-red-overlay, 075-nuclei-locations, 114-nuclei-csv-open |
-| System & Software Operations | 046-restore-tripadvisor-tab, 047-set-bing-search, 052-vignette-filter-window, 057-set-undo-steps-100, 073-force-quit-frozen-doc, 085-webext-happy-scaffold, 089-install-recommended-exts, 115-remove-explorer-find-key |
-| Web & Information | 032-compare-iphones, 036-license-eligibility, 037-electric-cars-under-50k, 040-seattle-ny-miles-flight, 041-baby-name-carl, 042-black-sale-coffee-makers, 099-professor-contact-info, 105-search-cell-b6 |
+| System & Software Operations | 047-set-bing-search, 052-vignette-filter-window, 057-set-undo-steps-100, 073-force-quit-frozen-doc, 085-webext-happy-scaffold, 089-install-recommended-exts, **113-add-folders-workspace**, 115-remove-explorer-find-key |
+| Web & Information | 036-license-eligibility, 037-electric-cars-under-50k, **039-manchester-forecast**, 040-seattle-ny-miles-flight, 041-baby-name-carl, **077-corresponding-scholar-url**, 099-professor-contact-info, 105-search-cell-b6 |
+
+Swapped out: 032-compare-iphones, 042-black-sale-coffee-makers, 046-restore-tripadvisor-tab, 069-linux-ls-tutorial (causes in `subset_amendments.json`). Oracle below 1 but kept: 004, 019, 110 (reference-solution bugs), 111, 112 (continuous image-similarity metrics).
 
 Dev split: 009-repair-org-chart-layout, 056-move-textbox-left, 020-calculate-period-rate, 086-futian-checkin-addresses, 003-rebuild-energy-model, 033-prostate-volume-est, 072-save-speedtest-results, 106-create-charles-ssh-user, 095-save-apple-searching-page, 100-name-mountain-photos.
 
@@ -95,7 +100,7 @@ uv run python scripts/check_harbor_filter.py configs/eval_tasks.args
 
 ## Team Setup (each laptop)
 
-**Prerequisites:** git, [uv](https://docs.astral.sh/uv/getting-started/installation/), and [Docker Desktop](https://www.docker.com/products/docker-desktop/) with **Memory ≥ 10 GB** and **CPUs ≥ 6** (Settings → Resources). Keep **≥ 25 GB of free disk**. macOS and Linux work as-is. On Windows, run everything inside WSL2 (Ubuntu) with Docker Desktop's WSL integration on.
+**Prerequisites:** git, [uv](https://docs.astral.sh/uv/getting-started/installation/), and [Docker Desktop](https://www.docker.com/products/docker-desktop/) with **Memory ≥ 10 GB** and **CPUs ≥ 6** (Settings → Resources). Keep **≥ 25 GB of free disk**. macOS and Linux work as-is. On Windows, run everything inside WSL2 (Ubuntu) with Docker Desktop's WSL integration on. Clone into the Linux home folder, not `/mnt/c`: a Windows checkout gets CRLF line endings that break the scripts. On WSL2, Docker's memory is set by `%UserProfile%\.wslconfig` (`[wsl2]` / `memory=10GB`, then `wsl --shutdown`), not by the Docker Desktop slider. Full walkthrough: [docs/STATUS.md §5](docs/STATUS.md#5-continuing-on-a-windows-laptop).
 
 Run these once, from the folder where you keep your repos:
 
@@ -154,6 +159,7 @@ python3 scripts/summarize_run.py jobs/eval-oracle-gate                         #
 python3 scripts/export_run.py jobs/eval-oracle-gate results/oracle-gate/eval  # curated logs into git
 ```
 
+* `--split eval` runs the sampled eval split with the oracle-gate swaps in [`configs/subset_amendments.json`](configs/subset_amendments.json) applied (`python3 scripts/task_list.py eval` prints it). `--split reserve` runs unused reserves, oracle or nop only, to check a replacement before it is swapped in.
 * `--only ID[,ID…]` runs part of a split.
 * `--dry-run` prints the commands after the checks.
 * Anything after `--` goes to `harbor run` unchanged.
