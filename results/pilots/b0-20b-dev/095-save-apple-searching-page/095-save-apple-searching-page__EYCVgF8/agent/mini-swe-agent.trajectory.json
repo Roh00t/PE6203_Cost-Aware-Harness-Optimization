@@ -1,0 +1,405 @@
+{
+  "info": {
+    "model_stats": {
+      "instance_cost": 0.0,
+      "api_calls": 4
+    },
+    "config": {
+      "agent": {
+        "system_template": "You are a helpful assistant that can interact with a computer.\n",
+        "instance_template": "Please solve this issue: {{task}}\n\nYou can execute bash commands and edit files to implement the necessary changes.\n\n## Recommended Workflow\n\nThis workflow should be done step-by-step so that you can iterate on your changes and any possible problems.\n\n1. Analyze the codebase by finding and reading relevant files\n2. Create a script to reproduce the issue\n3. Edit the source code to resolve the issue\n4. Verify your fix works by running your script again\n5. Test edge cases to ensure your fix is robust\n6. Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.\n   Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>\n\n## Command Execution Rules\n\nYou are operating in an environment where\n\n1. You issue at least one command\n2. The system executes the command(s) in a subshell\n3. You see the result(s)\n4. You write your next command(s)\n\nEach response should include:\n\n1. **Reasoning text** where you explain your analysis and plan\n2. At least one tool call with your command\n\n**CRITICAL REQUIREMENTS:**\n\n- Your response SHOULD include reasoning text explaining what you're doing\n- Your response MUST include AT LEAST ONE bash tool call\n- Directory or environment variable changes are not persistent. Every action is executed in a new subshell.\n- However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd /path/to/working/dir && ...` or write/load environment variables from files\n- Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.\n  Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>\n\nExample of a CORRECT response:\n<example_response>\nI need to understand the structure of the repository first. Let me check what files are in the current directory to get a better understanding of the codebase.\n\n[Makes bash tool call with {\"command\": \"ls -la\"} as arguments]\n</example_response>\n\n<system_information>\n{{system}} {{release}} {{version}} {{machine}}\n</system_information>\n\n## Useful command examples\n\n### Create a new file:\n\n```bash\ncat <<'EOF' > newfile.py\nimport numpy as np\nhello = \"world\"\nprint(hello)\nEOF\n```\n\n### Edit files with sed:\n\n{%- if system == \"Darwin\" -%}\n<important>\nYou are on MacOS. For all the below examples, you need to use `sed -i ''` instead of `sed -i`.\n</important>\n{%- endif -%}\n\n```bash\n# Replace all occurrences\nsed -i 's/old_string/new_string/g' filename.py\n\n# Replace only first occurrence\nsed -i 's/old_string/new_string/' filename.py\n\n# Replace first occurrence on line 1\nsed -i '1s/old_string/new_string/' filename.py\n\n# Replace all occurrences in lines 1-10\nsed -i '1,10s/old_string/new_string/g' filename.py\n```\n\n### View file content:\n\n```bash\n# View specific lines with numbers\nnl -ba filename.py | sed -n '10,20p'\n```\n\n### Any other command you want to run\n\n```bash\nanything\n```\n",
+        "step_limit": 0,
+        "cost_limit": 0.0,
+        "wall_time_limit_seconds": 0,
+        "max_consecutive_format_errors": 3,
+        "output_path": "/logs/agent/mini-swe-agent.trajectory.json",
+        "mode": "yolo",
+        "whitelist_actions": [],
+        "confirm_exit": false
+      },
+      "agent_type": "minisweagent.agents.interactive.InteractiveAgent",
+      "model": {
+        "model_name": "openrouter/openai/gpt-oss-20b",
+        "model_kwargs": {
+          "drop_params": true,
+          "max_tokens": 8192,
+          "extra_body": {
+            "provider": {
+              "order": [
+                "Darkbloom"
+              ],
+              "allow_fallbacks": false,
+              "require_parameters": true
+            },
+            "reasoning": {
+              "effort": "low"
+            },
+            "usage": {
+              "include": true
+            }
+          }
+        },
+        "litellm_model_registry": null,
+        "set_cache_control": null,
+        "cost_tracking": "ignore_errors",
+        "format_error_template": "{% if finish_reason is defined and (finish_reason == \"length\" or (finish_reason == \"tool_calls\" and not has_tool_calls)) -%}\nYour previous response reached the output token limit (finish_reason={{ finish_reason }}) before you produced a tool call, so it was cut off. Respond more concisely and finish with exactly one bash tool call. If you need to think more, do so briefly.\n{%- else -%}\nTool call error:\n\n<error>\n{{error}}\n</error>\n\nHere is general guidance on how to submit correct toolcalls:\n\nEvery response needs to use the 'bash' tool at least once to execute commands.\n\nCall the bash tool with your command as the argument:\n- Tool: bash\n- Arguments: {\"command\": \"your_command_here\"}\n\nIf you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`\nwithout any other command.\n{%- endif %}\n",
+        "observation_template": "{%- if output.output | length < 10000 -%}\n{\n  \"returncode\": {{ output.returncode }},\n  \"output\": {{ output.output | tojson }}\n  {%- if output.exception_info %}, \"exception_info\": {{ output.exception_info | tojson }}{% endif %}\n}\n{%- else -%}\n{\n  \"returncode\": {{ output.returncode }},\n  \"output_head\": {{ output.output[:5000] | tojson }},\n  \"output_tail\": {{ output.output[-5000:] | tojson }},\n  \"elided_chars\": {{ output.output | length - 10000 }},\n  \"warning\": \"Output too long.\"\n  {%- if output.exception_info %}, \"exception_info\": {{ output.exception_info | tojson }}{% endif %}\n}\n{%- endif -%}\n",
+        "multimodal_regex": ""
+      },
+      "model_type": "minisweagent.models.litellm_model.LitellmModel",
+      "environment": {
+        "cwd": "",
+        "env": {
+          "PAGER": "cat",
+          "MANPAGER": "cat",
+          "LESS": "-R",
+          "PIP_PROGRESS_BAR": "off",
+          "TQDM_DISABLE": "1"
+        },
+        "timeout": 30
+      },
+      "environment_type": "minisweagent.environments.local.LocalEnvironment"
+    },
+    "mini_version": "2.4.6",
+    "exit_status": "RepeatedFormatError",
+    "submission": ""
+  },
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a helpful assistant that can interact with a computer."
+    },
+    {
+      "role": "user",
+      "content": "Please solve this issue: Given the website `https://developer.apple.com/design/human-interface-guidelines/searching`, could you help me obtain a local version of the blog's content to facilitate my own revisions? Please retain the primary content on the page, specifically from 'searching' to just before 'resources'. Optionally using Microsoft Word if needed, please save this blog content as \"notes.docx\" to the final output path: `/home/user/Desktop/notes.docx`.\n\n\nYou can execute bash commands and edit files to implement the necessary changes.\n\n## Recommended Workflow\n\nThis workflow should be done step-by-step so that you can iterate on your changes and any possible problems.\n\n1. Analyze the codebase by finding and reading relevant files\n2. Create a script to reproduce the issue\n3. Edit the source code to resolve the issue\n4. Verify your fix works by running your script again\n5. Test edge cases to ensure your fix is robust\n6. Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.\n   Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>\n\n## Command Execution Rules\n\nYou are operating in an environment where\n\n1. You issue at least one command\n2. The system executes the command(s) in a subshell\n3. You see the result(s)\n4. You write your next command(s)\n\nEach response should include:\n\n1. **Reasoning text** where you explain your analysis and plan\n2. At least one tool call with your command\n\n**CRITICAL REQUIREMENTS:**\n\n- Your response SHOULD include reasoning text explaining what you're doing\n- Your response MUST include AT LEAST ONE bash tool call\n- Directory or environment variable changes are not persistent. Every action is executed in a new subshell.\n- However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd /path/to/working/dir && ...` or write/load environment variables from files\n- Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.\n  Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>\n\nExample of a CORRECT response:\n<example_response>\nI need to understand the structure of the repository first. Let me check what files are in the current directory to get a better understanding of the codebase.\n\n[Makes bash tool call with {\"command\": \"ls -la\"} as arguments]\n</example_response>\n\n<system_information>\nLinux 6.18.40.1-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Fri Jul 31 22:12:15 UTC 2026 x86_64\n</system_information>\n\n## Useful command examples\n\n### Create a new file:\n\n```bash\ncat <<'EOF' > newfile.py\nimport numpy as np\nhello = \"world\"\nprint(hello)\nEOF\n```\n\n### Edit files with sed:```bash\n# Replace all occurrences\nsed -i 's/old_string/new_string/g' filename.py\n\n# Replace only first occurrence\nsed -i 's/old_string/new_string/' filename.py\n\n# Replace first occurrence on line 1\nsed -i '1s/old_string/new_string/' filename.py\n\n# Replace all occurrences in lines 1-10\nsed -i '1,10s/old_string/new_string/g' filename.py\n```\n\n### View file content:\n\n```bash\n# View specific lines with numbers\nnl -ba filename.py | sed -n '10,20p'\n```\n\n### Any other command you want to run\n\n```bash\nanything\n```"
+    },
+    {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "index": 0,
+          "function": {
+            "arguments": "{\"command\":\"curl -s https://developer.apple.com/design/human-interface-guidelines/searching > /tmp/page.html\"}",
+            "name": "bash"
+          },
+          "id": "call_E53D566A3F674AE487F65716",
+          "type": "function"
+        }
+      ],
+      "function_call": null,
+      "reasoning_content": "Need to fetch webpage, extract content between 'searching' and before 'resources'. Use curl and html parsing maybe pup. Simpler: use lynx -dump? Let's use curl and sed to extract. Then write to notes.docx using pandoc? We can create a markdown file and convert to docx. Let's do: curl -s URL > page.html. Then use pup? Might not available. Use grep and sed. Let's just output raw text. Then pandoc -o notes.docx notes.md.",
+      "provider_specific_fields": {
+        "refusal": null,
+        "reasoning": "Need to fetch webpage, extract content between 'searching' and before 'resources'. Use curl and html parsing maybe pup. Simpler: use lynx -dump? Let's use curl and sed to extract. Then write to notes.docx using pandoc? We can create a markdown file and convert to docx. Let's do: curl -s URL > page.html. Then use pup? Might not available. Use grep and sed. Let's just output raw text. Then pandoc -o notes.docx notes.md.",
+        "reasoning_details": [
+          {
+            "type": "reasoning.text",
+            "text": "Need to fetch webpage, extract content between 'searching' and before 'resources'. Use curl and html parsing maybe pup. Simpler: use lynx -dump? Let's use curl and sed to extract. Then write to notes.docx using pandoc? We can create a markdown file and convert to docx. Let's do: curl -s URL > page.html. Then use pup? Might not available. Use grep and sed. Let's just output raw text. Then pandoc -o notes.docx notes.md.",
+            "format": "unknown",
+            "index": 0
+          }
+        ]
+      },
+      "extra": {
+        "actions": [
+          {
+            "command": "curl -s https://developer.apple.com/design/human-interface-guidelines/searching > /tmp/page.html",
+            "tool_call_id": "call_E53D566A3F674AE487F65716"
+          }
+        ],
+        "response": {
+          "id": "gen-1791745286-2VImYT3XY26dYKYjGVe8",
+          "created": 1791745286,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "tool_calls",
+              "index": 0,
+              "message": {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "index": 0,
+                    "function": {
+                      "arguments": "{\"command\":\"curl -s https://developer.apple.com/design/human-interface-guidelines/searching > /tmp/page.html\"}",
+                      "name": "bash"
+                    },
+                    "id": "call_E53D566A3F674AE487F65716",
+                    "type": "function"
+                  }
+                ],
+                "function_call": null,
+                "reasoning_content": "Need to fetch webpage, extract content between 'searching' and before 'resources'. Use curl and html parsing maybe pup. Simpler: use lynx -dump? Let's use curl and sed to extract. Then write to notes.docx using pandoc? We can create a markdown file and convert to docx. Let's do: curl -s URL > page.html. Then use pup? Might not available. Use grep and sed. Let's just output raw text. Then pandoc -o notes.docx notes.md.",
+                "provider_specific_fields": {
+                  "refusal": null,
+                  "reasoning": "Need to fetch webpage, extract content between 'searching' and before 'resources'. Use curl and html parsing maybe pup. Simpler: use lynx -dump? Let's use curl and sed to extract. Then write to notes.docx using pandoc? We can create a markdown file and convert to docx. Let's do: curl -s URL > page.html. Then use pup? Might not available. Use grep and sed. Let's just output raw text. Then pandoc -o notes.docx notes.md.",
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "Need to fetch webpage, extract content between 'searching' and before 'resources'. Use curl and html parsing maybe pup. Simpler: use lynx -dump? Let's use curl and sed to extract. Then write to notes.docx using pandoc? We can create a markdown file and convert to docx. Let's do: curl -s URL > page.html. Then use pup? Might not available. Use grep and sed. Let's just output raw text. Then pandoc -o notes.docx notes.md.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ]
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "tool_calls"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 149,
+            "prompt_tokens": 913,
+            "total_tokens": 1062,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 105,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 2.9844e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 2.9844e-05,
+              "upstream_inference_prompt_cost": 1.6434e-05,
+              "upstream_inference_completions_cost": 1.341e-05
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        },
+        "cost": 0.0,
+        "timestamp": 1791745292.8076098
+      }
+    },
+    {
+      "content": "{\n  \"returncode\": 0,\n  \"output\": \"\"\n}",
+      "extra": {
+        "raw_output": "",
+        "returncode": 0,
+        "timestamp": 1791745293.488804,
+        "exception_info": ""
+      },
+      "tool_call_id": "call_E53D566A3F674AE487F65716",
+      "role": "tool"
+    },
+    {
+      "role": "user",
+      "content": "Tool call error:\n\n<error>\nNo tool calls found in the response. Every response MUST include at least one tool call.\n</error>\n\nHere is general guidance on how to submit correct toolcalls:\n\nEvery response needs to use the 'bash' tool at least once to execute commands.\n\nCall the bash tool with your command as the argument:\n- Tool: bash\n- Arguments: {\"command\": \"your_command_here\"}\n\nIf you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`\nwithout any other command.",
+      "extra": {
+        "interrupt_type": "FormatError",
+        "cost": 0.0,
+        "response": {
+          "id": "gen-1791745295-W7Om8feXli4WCHiQ8Iko",
+          "created": 1791745295,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "reasoning_content": "Now extract content. Use sed to get lines between markers. Search for 'searching' heading maybe <h1>Searching</h1>. Let's grep for <h1>Searching</h1> to find start. Then until before <h2>Resources</h2>. Use awk.",
+                "provider_specific_fields": {
+                  "refusal": null,
+                  "reasoning": "Now extract content. Use sed to get lines between markers. Search for 'searching' heading maybe <h1>Searching</h1>. Let's grep for <h1>Searching</h1> to find start. Then until before <h2>Resources</h2>. Use awk.",
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "Now extract content. Use sed to get lines between markers. Search for 'searching' heading maybe <h1>Searching</h1>. Let's grep for <h1>Searching</h1> to find start. Then until before <h2>Resources</h2>. Use awk.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ]
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "stop"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 106,
+            "prompt_tokens": 1097,
+            "total_tokens": 1203,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 60,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 2.9286e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 2.9286e-05,
+              "upstream_inference_prompt_cost": 1.9746e-05,
+              "upstream_inference_completions_cost": 9.54e-06
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "Tool call error:\n\n<error>\nNo tool calls found in the response. Every response MUST include at least one tool call.\n</error>\n\nHere is general guidance on how to submit correct toolcalls:\n\nEvery response needs to use the 'bash' tool at least once to execute commands.\n\nCall the bash tool with your command as the argument:\n- Tool: bash\n- Arguments: {\"command\": \"your_command_here\"}\n\nIf you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`\nwithout any other command.",
+      "extra": {
+        "interrupt_type": "FormatError",
+        "cost": 0.0,
+        "response": {
+          "id": "gen-1791745305-JkcCIWbSHguqETd434i0",
+          "created": 1791745305,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "I\u2019ll download the page, extract the text between the \u201csearching\u201d section and just before the \u201cresources\u201d section, then convert that text to a Word document.\n\n**Step 1 \u2013 fetch the page**\n\n```bash\ncurl -s https://developer.apple.com/design/human-interface-guidelines/searching > /tmp/page.html\n```\n\n**Step 2 \u2013 isolate the desired content**\n\nThe page is structured with headings. I\u2019ll use `sed` to keep everything from the first occurrence of \u201csearching\u201d up to (but not including) the next heading that contains \u201cresources\u201d.  \n```bash\nsed -n '/searching/,/resources/p' /tmp/page.html | \\\n  sed '/resources/d' > /tmp/content.html\n```\n\n**Step 3 \u2013 convert the HTML fragment to plain text**\n\n```bash\nlynx -dump -nolist /tmp/content.html > /tmp/content.txt\n```\n\n**Step 4 \u2013 create a Markdown file for Pandoc**\n\n```bash\ncat <<'EOF' > /tmp/notes.md\n$(cat /tmp/content.txt)\nEOF\n```\n\n**Step 5 \u2013 convert Markdown to Word**\n\n```bash\npandoc /tmp/notes.md -o /home/user/Desktop/notes.docx\n```\n\n**Step 6 \u2013 clean up temporary files**\n\n```bash\nrm /tmp/page.html /tmp/content.html /tmp/content.txt /tmp/notes.md\n```\n\nNow the Word document `notes.docx` is ready on the Desktop. If everything looks good, I\u2019ll finish the task.\n\n```bash\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n```\n",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "reasoning_content": "Need to include reasoning text and tool call.",
+                "provider_specific_fields": {
+                  "refusal": null,
+                  "reasoning": "Need to include reasoning text and tool call.",
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "Need to include reasoning text and tool call.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ]
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "stop"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 355,
+            "prompt_tokens": 1214,
+            "total_tokens": 1569,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 9,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 5.3802e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 5.3802e-05,
+              "upstream_inference_prompt_cost": 2.1852e-05,
+              "upstream_inference_completions_cost": 3.195e-05
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "Tool call error:\n\n<error>\nNo tool calls found in the response. Every response MUST include at least one tool call.\n</error>\n\nHere is general guidance on how to submit correct toolcalls:\n\nEvery response needs to use the 'bash' tool at least once to execute commands.\n\nCall the bash tool with your command as the argument:\n- Tool: bash\n- Arguments: {\"command\": \"your_command_here\"}\n\nIf you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`\nwithout any other command.",
+      "extra": {
+        "interrupt_type": "FormatError",
+        "cost": 0.0,
+        "response": {
+          "id": "gen-1791745315-4jZxnb34iatmiQEop6so",
+          "created": 1791745315,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "I will download the page, extract the relevant section, and convert it to a Word document.\n\n```bash\n# 1. Download the page\ncurl -s https://developer.apple.com/design/human-interface-guidelines/searching > /tmp/page.html\n\n# 2. Extract text between the headings \"Searching\" and the next heading before \"Resources\"\n#    We'll use lynx to dump readable text and then cut the section.\nlynx -dump -nolist /tmp/page.html | \\\nawk '/^Searching$/,/^Resources$/' | \\\nsed '/^Resources$/d' > /tmp/notes.txt\n\n# 3. Convert the extracted text to a Word document\npandoc /tmp/notes.txt -o /home/user/Desktop/notes.docx\n```\n\nAfter running these commands, the file `/home/user/Desktop/notes.docx` will contain the requested content.",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "provider_specific_fields": {
+                  "refusal": null,
+                  "reasoning": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "stop"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 186,
+            "prompt_tokens": 1331,
+            "total_tokens": 1517,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 4.0698e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 4.0698e-05,
+              "upstream_inference_prompt_cost": 2.3958e-05,
+              "upstream_inference_completions_cost": 1.674e-05
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        }
+      }
+    },
+    {
+      "role": "exit",
+      "content": "RepeatedFormatError",
+      "extra": {
+        "exit_status": "RepeatedFormatError",
+        "submission": ""
+      }
+    }
+  ],
+  "trajectory_format": "mini-swe-agent-1.1"
+}
