@@ -152,6 +152,9 @@ have_sha="$(git -C "$TUA_ROOT" rev-parse HEAD)"
 [[ "$have_sha" == "$want_sha" ]] || die "TUA-Bench at $have_sha, subset was drawn at $want_sha"
 [[ -z "$(git -C "$TUA_ROOT" status --porcelain --untracked-files=no -- tasks dataset.toml)" ]] \
     || die "TUA-Bench tasks/verifiers have local modifications"
+if [[ $custom_agent -eq 1 || ( "$agent" != "oracle" && "$agent" != "nop" ) ]]; then
+    python3 scripts/check_no_task_leak.py || die "task-leak check failed; refusing to start a paid run"
+fi
 
 # 2. Harbor resolves the task list to exactly the intended tasks.
 uv run --frozen python scripts/check_harbor_filter.py "$ARGS_FILE"
