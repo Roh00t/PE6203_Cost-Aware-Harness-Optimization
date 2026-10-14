@@ -46,7 +46,6 @@ def _task_sources(tasks_root: Path) -> tuple[set[str], set[str]]:
             instruction = instruction_file.read_text(encoding="utf-8")
         except OSError as error:
             raise ValueError(f"Cannot read task instruction {instruction_file}: {error}") from error
-        # Decimal numbers and version numbers are not instruction filenames.
         filenames.update(
             match.group(1) for match in _FILENAME.finditer(instruction)
             if not re.fullmatch(r"\d+(?:\.\d+)+", match.group(1))

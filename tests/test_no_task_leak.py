@@ -61,7 +61,6 @@ class TaskLeakTests(unittest.TestCase):
             self.assertEqual(find_leaks(root, tasks), [])
             code.write_text("filename = '123.csv'", encoding="utf-8")
             self.assertEqual({item.value for item in find_leaks(root, tasks)}, {"123.csv"})
-
     def test_missing_instruction_fails_explicitly(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
