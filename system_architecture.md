@@ -1,7 +1,7 @@
 # System Architecture
 
 **PE6203 CA2 · Group Project 5 · Cost-Aware Harness Optimization on TUA-Bench**
-Status: design baseline, 2026-10-09. Sections marked **TBD** are settled by the dev-split pilot (§7.3) before any eval run.
+Status: design baseline 2026-10-09; model pair and budget frozen 2026-10-13 after the dev-split pilot (§7.3, `docs/model_selection.md`).
 
 Companion documents: [`guardrails.md`](guardrails.md) (what the harness blocks and why), [`agent_instructions.md`](agent_instructions.md) (the evaluated agent's prompt), [`CLAUDE.md`](CLAUDE.md) (rules for people and coding agents working on this repo).
 
@@ -18,7 +18,7 @@ The question: can a cheap base model inside our harness beat an expensive model 
 | Fixed, documented subset of at least 40 tasks, same for every configuration | 40 eval tasks, 8 per family, hash-ranked with seed 42, fingerprint `08cef024…` ([README](README.md#evaluation-subset)). |
 | One provider and price table for all costs, harness calls included | Every call goes through OpenRouter, is logged, and is priced from one frozen table (§8). |
 | Default-harness baseline is "unmodified … with its default settings" | B0 and E run Harbor's stock `mini-swe-agent` 2.4.6 with its default config: no step cap and no cost cap, under the task's own 2,400 s limit (§6). H0 keeps the same defaults. |
-| Maximise success "under a fixed per-task cost budget" | Our variants run under one per-task budget, **B_task** dollars and S = 50 steps, set from the dev pilot and frozen before eval (§6). It is introduced by C3, so the budget is itself an ablated harness choice. |
+| Maximise success "under a fixed per-task cost budget" | Our variants run under one per-task budget, **B_task** = $0.01 and S = 50 steps, frozen before eval (§6). It is introduced by C3, so the budget is itself an ablated harness choice. |
 | Report per-task time and step limits; flag gains that come only from extra budget | §6 lists every limit per configuration. Components that change a limit (C3) are labelled as budget changes in the ablation table. |
 | Discuss whether the gain shrinks with a stronger base model | V-E (our harness with the expensive model) is a **required** configuration (§2) |
 
@@ -188,7 +188,7 @@ Each component sits behind one flag in `configs/harness/<config>.yaml`, so it ca
 | Agent wall-clock per task | Task default **2,400 s** (`task.toml`) | All | The paper's own default; not changed |
 | Step cap | None (stock default) / **S = 50** with C3 | B0, E, H0, H0+C0/C1/C2/C4/C5: none · H0+C3, V, V-E: 50 | Stock mini has no step cap and Harbor passes `--cost-limit 0`; we keep those defaults for the baselines |
 | Command timeout | 30 s (stock) / 180 s (C3) | Per config | Reported as a budget change |
-| Per-task cost budget **B_task** | 2× the median per-task cost of B0 on the dev pilot, rounded up to the cent (**TBD**, frozen before eval) | H0+C3, V. V-E gets the same token-equivalent cap (B_task × expensive/base price ratio). | The brief's "fixed per-task cost budget". Pegging it to the default harness's own typical spend means a win cannot come from outspending the baseline. |
+| Per-task cost budget **B_task** | **$0.01** with the base model (frozen 2026-10-13). **V-E: $0.0167**, the same token budget at the expensive model's prices (gpt-oss-120b/20b price ratio 1.67 for both input and output) | H0+C3, V, V-E | The brief's "fixed per-task cost budget". B_task is sized to the step cap: 50 steps × ~11,000 prompt tokens × $0.018/M (gpt-oss-20b input price) ≈ $0.0099, so the dollar cap and S = 50 describe the same budget. It is not an exact ceiling on steps: output tokens also count, and the gateway reserves the worst case before each call (§8), so on long, large-context runs the dollar cap can end a trial a few steps before step 50. Which cap ended each trial is logged (`cap_reached`, `LimitsExceeded`) and reported. A cap pegged to B0's own spend was rejected: B0 with gpt-oss-20b mostly ends early on format errors (median $0.00019 per task on the pilot), so 2× its median would stop our variants after a handful of steps and measure the cap rather than the harness. |
 | Safety ceiling for uncapped configs | None unless the pilot says otherwise | B0, E, H0, H0+C0/C1/C2/C4/C5 | Protected by each person's OpenRouter key credit limit. If the dev pilot projects an uncapped configuration above its share of the budget, add a high ceiling (binding in under 5% of pilot trials), apply it to every uncapped configuration, and report it as a deviation from defaults. |
 | Per-job spend cap | Job estimate + 20% | Host configs | Kill switch in the gateway; [guardrails.md §4](guardrails.md#4-limits-and-kill-switches) |
 | Concurrency | Trials of the **same task** run in parallel: n = ⌊0.9 × Docker memory ÷ task memory⌋, capped at the number of configurations | All | Most eval tasks need 2–4 GB, so 2–4 at once on a 10 GB VM; Scientific tasks (8 GB) run one at a time. Auto mode in `harbor_run.sh` is planned (§10.3). |
@@ -224,10 +224,10 @@ Estimates assume a mean of 25 steps × 12k prompt tokens and 600 output tokens p
 - A same-family pair (e.g. `gpt-oss-20b` → `gpt-oss-120b`, or `qwen3-coder-30b-a3b` → a larger Qwen3) isolates model scale cleanly and fits about 3× over.
 
 ### 7.3 Selection protocol (dev split only, before any eval run)
-1. Run **B0** (Harbor's stock `mini-swe-agent` 2.4.6, available now, no code of ours) on the 10 **dev** tasks with 2–3 shortlisted base models (about $0.05–$0.30 each). The model's pinned provider and decoding settings go in through a copy of stock `mini.yaml` whose only change is `model.model_kwargs` (diff-checked), so harness behaviour stays default. This pilot also gives B0's per-task cost and time, which set **B_task** (§6) and the run-time estimate (§10.5).
+1. Run **B0** (Harbor's stock `mini-swe-agent` 2.4.6, available now, no code of ours) on the 10 **dev** tasks with 2–3 shortlisted base models (about $0.05–$0.30 each). The model's pinned provider and decoding settings go in through a copy of stock `mini.yaml` whose only change is `model.model_kwargs` (diff-checked), so harness behaviour stays default. This pilot also gives B0's per-task cost and time, used to check **B_task** (§6) and for the run-time estimate (§10.5).
 2. Reject any model that scores 0/10 with mostly format errors, or overflows its context.
 3. Pick the cheapest model with non-trivial success. Then pick the expensive model by the same rule, requiring success above the base model's.
-4. Freeze the choices and B_task in `configs/models/{base,expensive}.yaml`: model ID, pinned provider, `temperature` (0.0 for non-reasoning models; the vendor default for reasoning models, with `reasoning_effort` fixed), `max_tokens`, `seed` where supported. Record the decision and pilot numbers in the report. **After this, the model files do not change.**
+4. Freeze the choices in `configs/models/{base,expensive}.yaml` (B_task lives in the C3 harness configs, `configs/harness/*.yaml`): model ID, pinned provider, `temperature` (0.0 for non-reasoning models; the vendor default for reasoning models, with `reasoning_effort` fixed), `max_tokens`, `seed` where supported. Record the decision and pilot numbers in the report. **After this, the model files do not change.**
 
 ---
 
@@ -375,13 +375,14 @@ results/                      ☐ raw logs behind every reported number, traject
 
 | Item | Status | Mitigation / decision point |
 |---|---|---|
-| Base and expensive model | **TBD** | Dev pilot (§7.3); shortlist in §7.2 |
-| Temperature / reasoning effort | **TBD** | Fixed in the model config after the pilot; identical for every configuration |
+| Base and expensive model | **Frozen 2026-10-13** | gpt-oss-20b pinned to Darkbloom (base), gpt-oss-120b pinned to Venice (expensive), no provider fallback. Evidence: `docs/model_selection.md`, `results/pilots/` |
+| Temperature / reasoning effort | **Frozen 2026-10-13** | Reasoning effort `low`, `max_tokens` 8192, temperature and seed left at the provider default (as in the pilots); identical for every configuration of a model |
 | Scientific tasks under amd64 emulation on Apple Silicon | Risk | Oracle gate measures it. Heavy tasks can be assigned to an x86 teammate (split by task, §10.3). |
 | Live-website drift and bot blocking (Web family) | Risk | Task-major order, timestamps in `trials.csv`, oracle gate |
 | Pinned OpenRouter provider goes down | Risk | Infra-error rerun policy. If it's down for long, re-pin and rerun *all* configurations of the affected tasks. |
 | C3 raising the command timeout is a budget increase | Accepted | Labelled as a budget change in the ablation table |
 | H0 ≠ B0 parity | Risk | §10.2 check before ablations |
 | Uncapped baselines (B0, E, H0) overspend | Risk | Dev pilot measures real cost and time first. Per-person key credit limits. If needed, a high safety ceiling applied to every uncapped configuration and reported as a deviation (§6). |
-| B_task value | **TBD** | 2× B0's median per-task cost on the dev pilot; frozen with the model configs |
+| B_task value | **Frozen 2026-10-13** | $0.01 (base), $0.0167 (V-E), sized to the 50-step cap (§6). Risk: the dollar cap can end long runs a few steps before 50; measured on the dev runs and reported per trial |
+| B0/E end on format errors with gpt-oss | Observed in pilot | gpt-oss often answers in plain text instead of a tool call, so stock mini-swe-agent ends with `RepeatedFormatError`. Kept as is in B0/E (stock behaviour) and reported; C0 and C2 target it |
 | Disk vs task images (about 26 GB of build cache per 10 tasks, measured) | Mitigated | One Harbor job per task with `--delete`. A free-disk guard before each task (`MIN_FREE_GB`). Opt-in `--prune-cache` trims the build cache after each task. In the experiment phase, all configurations of a task run in one multi-agent Harbor job, then the cache is pruned. |

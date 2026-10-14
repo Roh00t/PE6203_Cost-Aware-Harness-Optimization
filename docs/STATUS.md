@@ -1,6 +1,6 @@
 # Project Status and Handoff
 
-Last updated **2026-10-10 evening** (Rohit's Windows laptop, WSL2). Read this first when picking the project up on another machine or in a new Claude Code session, then [`CLAUDE.md`](../CLAUDE.md) and [`system_architecture.md`](../system_architecture.md).
+Last updated **2026-10-14** (Rohit's Windows laptop, WSL2). Read this first when picking the project up on another machine or in a new Claude Code session, then [`CLAUDE.md`](../CLAUDE.md) and [`system_architecture.md`](../system_architecture.md).
 
 > **For a new Claude Code session:** this file holds the context of the earlier sessions. Start with: *"Read docs/STATUS.md, CLAUDE.md and system_architecture.md, then continue from 'Next steps'."*
 
@@ -15,11 +15,32 @@ Last updated **2026-10-10 evening** (Rohit's Windows laptop, WSL2). Read this fi
 | Design docs | **Done**, checked line by line against the brief. `guardrails.md` §8 waits for the lecture slides |
 | Dev oracle check | **Done: 9/10.** `100-name-mountain-photos` fails because of a bug in the benchmark's reference solution (agents can still solve it). Logs: `results/oracle-gate/dev-mac*/` |
 | Eval oracle gate | **Done.** 40/40 settled on Mac + x86, 4 tasks swapped for reserves that pass (§2). Logs: `results/oracle-gate/eval-mac/`, `eval-x86/`, `reserve-x86/` |
-| Model choice, B_task, harness code, experiments, report | Not started. Owners and dates in §4 |
+| Model choice and price table | **Done and frozen** (2026-10-13, Ulfa). gpt-oss-20b on Darkbloom (base), gpt-oss-120b on Venice (expensive); `configs/pricing.json`, `configs/models/`, evidence in `docs/model_selection.md` and `results/pilots/` |
+| B_task | **Frozen:** $0.01 per task (base), $0.0167 (V-E), with the 50-step cap. Reasoning in architecture §6 |
+| Harness core | **On `main`** (2026-10-14, Abin): Harbor agent, loop with hooks, container adapter, OpenRouter gateway with call logging, C1, C3, guardrails (Isha) wired in, leak check before paid runs. 41 offline tests pass (`uv run --frozen python -m pytest -q tests`). Live H0 run on dev not done yet. Hook contract: `docs/harness_core.md` |
+| C0 prompt, V/V-E configs, multi-config runner | **Written** (2026-10-14, Rohit): `agent_instructions.md` v3, `configs/harness/` (all 11 configurations), `scripts/run_all_configs.py`. V and V-E stay blocked until C2/C4/C5 exist |
+| C2, C4, C5 | In progress (Isha), due Thu 15 |
+| Experiments, report | Not started. Owners and dates in §4 |
 
-Overall about **32 %** of the weighted plan (foundations done; harness, experiments and report are the remaining 68 %). Model spend so far: **$0.00**.
+### Progress by workstream
 
-Team progress page: https://claude.ai/artifact/D1a8FLLj5aqiAAeXWSBWSN (still shows Fri 9 Oct numbers)
+| Workstream | Weight | Done | Weighted |
+|---|---|---|---|
+| 1. Benchmark subset | 8 % | 100 % | 8.0 |
+| 2. Run infrastructure | 10 % | 100 % | 10.0 |
+| 3. Design documents (open: guardrails §8, needs the lecture slides) | 10 % | 90 % | 9.0 |
+| 4. Oracle gate | 5 % | 100 % | 5.0 |
+| 5. Model choice and price table | 5 % | 100 % | 5.0 |
+| 6. Harness implementation (core, C1, C3, guardrails, C0, configs done; C2/C4/C5 and live validation open) | 25 % | 50 % | 12.5 |
+| 7. Baselines B0 and E on eval | 5 % | 0 % | 0 |
+| 8. Experiment runs | 12 % | 0 % | 0 |
+| 9. Analysis and report | 15 % | 0 % | 0 |
+| 10. Presentation | 5 % | 0 % | 0 |
+| **Overall** | | | **49.5 %** |
+
+Weights are relative effort estimates, not hours. Model spend so far: about **$0.18** at table prices (Ulfa's dev pilots, $0.16 of it the rejected Qwen candidate; figures in `docs/model_selection.md` and `results/pilots/`).
+
+Team progress page: https://claude.ai/artifact/D1a8FLLj5aqiAAeXWSBWSN
 
 ---
 
@@ -45,16 +66,17 @@ All four replacements passed the oracle (`results/oracle-gate/reserve-x86/`). Ca
 | Decision | Where it's documented |
 |---|---|
 | Baselines B0 and E run stock mini-swe-agent 2.4.6 with **default settings** (no step or cost cap) | architecture §2, §6; CLAUDE.md |
-| Our variants run under a fixed per-task budget: 50 steps and **B_task** = 2× B0's median per-task cost on the dev pilot | architecture §5 (C3), §6 |
+| Our variants (C3 on) run under a fixed per-task budget: 50 steps and **B_task = $0.01**, sized to the step cap (50 × ~11k prompt tokens × $0.018/M). V-E: **$0.0167** (120b/20b price ratio 1.67). A multiple of B0's median spend was rejected because B0 mostly stops early on format errors ($0.00019 median) | architecture §5 (C3), §6; `docs/model_selection.md` |
 | **V-E** (our harness with the expensive model) is required, for 11 configurations in total | architecture §2 |
 | C2 includes separate `read_file` / `write_file` / `edit_file` / `search` tools | architecture §5 |
-| Model pilot uses **B0** on the dev split (no code needed) | architecture §7.3 |
-| Shortlist: gpt-oss-20b (base) / gpt-oss-120b (expensive); final pick from the pilot | architecture §7.2 |
+| Models frozen 2026-10-13: **gpt-oss-20b on Darkbloom** (base), **gpt-oss-120b on Venice** (expensive), reasoning effort low, max_tokens 8192, no provider fallback. Qwen3-Coder-30B rejected (25× the cost of 20b) | `configs/models/`, `configs/pricing.json`, `docs/model_selection.md` |
+| B0/E keep stock behaviour, including ending on `RepeatedFormatError` when gpt-oss answers in plain text; C0 and C2 target this | `docs/model_selection.md`, architecture §13 |
+| Each C2/C4/C5 is its own plugin (`harness/components/{tools,recovery,submit_gate}.py`, factory `build_hook`) so each can be ablated alone | `docs/harness_core.md`, `configs/harness/` |
 | All task images build as `linux/amd64`; one trial at a time unless memory allows more | README, `harbor_run.sh` |
 | Oracle-gate swaps only for infrastructure/environment failures; subset frozen 2026-10-10 | architecture §10.1, `subset_amendments.json` |
 | `CLAUDE.md` is for developers; `agent_instructions.md` is the evaluated agent's prompt | both files |
 
-**Open:** final model pair and B_task (Ulfa, after the pilot); `guardrails.md` §8 (needs the lecture slides).
+**Open:** how the cost report treats calls with unknown usage (Ulfa's collector rejects them; the gateway logs them as `null`); `guardrails.md` §8 (needs the lecture slides).
 
 ---
 
@@ -62,12 +84,22 @@ All four replacements passed the oracle (`results/oracle-gate/reserve-x86/`). Ca
 
 | Person | Role | Next deliverable |
 |---|---|---|
-| Rohit | Lead: infrastructure, integration, C0 prompt, freeze, presentation | Oracle gate **done**. Next: kickoff Mon 12 (three interfaces), multi-config job runner, lecture slides to Isha |
-| Abin | Harness core: agent, container adapter, gateway and logs, H0 parity, C1, C3 | Laptop setup now; hook interfaces by Tue 13 Oct, H0 parity Wed 14 |
-| Isha | Guardrails with tests, C2/C4/C5, task-leak check, false-positive review, guardrails §8 | Laptop setup now; guardrail rules + leak check (no dependencies) this weekend |
-| Ulfa | Price table, model pilot (B0 on dev), B_task, cost and statistics scripts, results section | Laptop setup now; `pricing.json` and pilot (~$0.30, dev split only), frozen model configs by Mon 12 Oct |
+| Person | Role | Done | Next |
+|---|---|---|---|
+| Rohit | Lead: infrastructure, integration, C0 prompt, freeze, presentation | Oracle gate, subset freeze, C0 prompt v3, all 11 harness configs, `run_all_configs.py` | Review C2/C4/C5 when they land; dev smoke test of V; tag harness v1 Fri 16; run schedule; lecture slides to Isha |
+| Abin | Harness core: agent, container adapter, gateway and logs, H0 parity, C1, C3 | Core, gateway, C1, C3, guardrail integration, leak gate (41 tests) | Live H0 on the 10 dev tasks vs Ulfa's B0 pilot; then C1 alone and C3 alone (note where C3 stops) |
+| Isha | Guardrails with tests, C2/C4/C5, task-leak check, false-positive review, guardrails §8 | Guardrails (16 rules), leak check | C2/C4/C5 as three plugins by Thu 15 (branch from `main`, not `isha/guardrails`); false-positive review after H0 runs |
+| Ulfa | Price table, model pilot, B_task, cost and statistics scripts, results section | Pricing, pilots, frozen model pair, `collect_costs.py` prototype | Make `collect_costs.py` read the harness `calls.jsonl`, including `null` usage; then `analyze.py` and `plot_pareto.py` |
 
-Kickoff on **Mon 12 Oct** agrees three interfaces: loop hook points, log fields, and the harness config format. Harness v1 freezes **Fri 16 Oct**, eval runs **16–19 Oct**, report **by 22 Oct**, presentation **23 Oct**.
+Harness v1 freezes **Fri 16 Oct**, eval runs **16–19 Oct**, report **by 22 Oct**, presentation **23 Oct**.
+
+**Running experiments.** `scripts/run_all_configs.py` runs a list of configurations task by task, one at a time, through `harbor_run.sh`:
+
+```bash
+uv run --frozen python scripts/run_all_configs.py --split dev --task-id 106-create-charles-ssh-user --configs B0,H0 --run-name smoke-b0-h0 --job-budget-usd 0.05 --dry-run
+```
+
+Drop `--dry-run` and set `CONFIRM_PAID=1` (plus `CONFIRM_EVAL=1` on eval) once the run and its cost are agreed. Harness configurations need `--job-budget-usd`, the per-run kill switch shared by every harness trial in the run; B0 and E have no cap by design and rely on the key's credit limit.
 
 Things learned on x86 that matter for everyone's runs:
 
