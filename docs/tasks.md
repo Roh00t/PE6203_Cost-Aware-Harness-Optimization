@@ -120,6 +120,7 @@ Inside each trial folder (`jobs/<run>/<config>/<task>/<task>__<id>/`): `agent/ca
 - C2, C4 and C5 are implemented as independent plugins in `harness/components/tools.py`, `recovery.py`, and `submit_gate.py`; fake-service behavior tests are in `tests/test_components.py`.
 - The C2 loop enforces one executed action per response while returning a result for each tool-call ID. A regression test also checks that H0 retains multi-action behavior.
 - The full pinned offline suite passes: 99 tests. `scripts/check_harness.py --config configs/harness/V.yaml` reports `OK: integration factories import`.
+- The approved C2/C4/C5 dev smoke-test command was attempted for the two planned tasks, but all six trials stopped at the runner preflight because `data/TUA-Bench` is absent. No Harbor trial or model call started; no spend occurred.
 - The published C1/C3 trajectories have been reviewed and the limitations documented in [`results/dev/c1-c3-dev/README.md`](../results/dev/c1-c3-dev/README.md). They contain no `guardrail_block` events, so they do not yet provide evidence for the false-positive review.
 - Collector regression tests for complete/incomplete usage and provider validation are added in [`tests/test_collect_costs.py`](../tests/test_collect_costs.py). This is supporting test work, not a decision to change Ulfa’s collector policy.
 
@@ -127,7 +128,7 @@ Inside each trial folder (`jobs/<run>/<config>/<task>/<task>__<id>/`): `agent/ca
 
 - Run `scripts/check_no_task_leak.py` once the pinned TUA-Bench task checkout is present. The command was attempted but this checkout does not contain `data/TUA-Bench/tasks`.
 - Push the implementation branch and request review from Abin and Rohit.
-- Run the two-task C2/C4/C5 dev smoke test only after team approval; preserve failed attempts and confirm component events are logged.
+- Restore the pinned TUA-Bench checkout, then coordinate before retrying the two-task C2/C4/C5 dev smoke test. The approved attempt stopped before trials began; preserve its runner record and verify component events on a successful run.
 - Complete a false-positive review when dev logs contain `guardrail_block` events. The published partial C1/C3 logs contain none.
 - Complete guardrails §8 after Rohit supplies the course lecture slides.
 
