@@ -80,26 +80,30 @@ class HarnessAgent(DefaultAgent):
         return None  # H0 retains stock FormatError behavior.
 
     def before_execute(self, action, state):
-        decision = self.guardrail.before_execute(action, state)
-        if decision.event or decision.rule_id:
-            self.events.write(
-                type=decision.event
-                or ("guardrail_block" if not decision.allowed else "guardrail_log"),
-                step=state.step,
-                rule_id=decision.rule_id,
-                command=str(action.get("command", ""))[:500],
-            )
-        if not decision.allowed:
-            self.guardrail_blocks += 1
-            if self.guardrail_blocks >= 10:
-                raise LimitsExceeded(
-                    {
-                        "role": "exit",
-                        "content": "GuardrailLimit",
-                        "extra": {"exit_status": "GuardrailLimit", "submission": ""},
-                    }
+        if action.get("tool", "bash") == "bash":
+            decision = self.guardrail.before_execute(action, state)
+            if decision.event or decision.rule_id:
+                self.events.write(
+                    type=decision.event
+                    or ("guardrail_block" if not decision.allowed else "guardrail_log"),
+                    step=state.step,
+                    rule_id=decision.rule_id,
+                    command=str(action.get("command", ""))[:500],
                 )
-            return decision
+            if not decision.allowed:
+                self.guardrail_blocks += 1
+                if self.guardrail_blocks >= 10:
+                    raise LimitsExceeded(
+                        {
+                            "role": "exit",
+                            "content": "GuardrailLimit",
+                            "extra": {
+                                "exit_status": "GuardrailLimit",
+                                "submission": "",
+                            },
+                        }
+                    )
+                return decision
         for hook in self.hooks:
             decision = hook.before_execute(action, state)
             if not decision.allowed:
@@ -151,44 +155,82 @@ class HarnessAgent(DefaultAgent):
 
     def execute_actions(self, message):
         outputs = []
-        for action in message.get("extra", {}).get("actions", []):
+        actions = message.get("extra", {}).get("actions", [])
+        c2_extra_calls = (
+            max(0, len(actions) - 1) if self.harness_config.enabled("C2") else 0
+        )
+        if c2_extra_calls:
+            self.events.write(
+                type="extra_tool_calls_ignored",
+                step=self.n_calls,
+                count=c2_extra_calls,
+            )
+        for index, action in enumerate(actions):
             state = self.state()
-            decision = self.before_execute(action, state)
-            if decision.allowed:
-                plugin = self.model.tool_plugins.get(action.get("tool"))
-                result = (
-                    plugin.execute_tool(action, state)
-                    if plugin
-                    else self.env.execute(action)
+            if c2_extra_calls and index > 0:
+                feedback = (
+                    "BLOCKED: this extra tool call was ignored; send one command per response."
                 )
-                # Detect submission from actual output, not a regex over the command.
-                lines = result.get("output", "").lstrip().splitlines()
-                if (
-                    result.get("returncode") == 0
-                    and lines
-                    and lines[0].strip() == "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
-                ):
-                    decision = self.before_submit(action, state)
-                    if decision.allowed:
-                        self.env.check_finished(result)
-                    else:
-                        result = {
-                            "output": decision.feedback,
-                            "returncode": -1,
-                            "exception_info": "",
-                            "extra": {"origin": "harness"},
-                        }
-                        self.events.write(
-                            type="submit_gate",
-                            step=state.step,
-                            rule_id=decision.rule_id,
-                        )
-            else:
                 result = {
-                    "output": decision.feedback,
+                    "output": feedback,
                     "returncode": -1,
                     "exception_info": "",
-                    "extra": {"origin": "harness"},
+                    "extra": {"origin": "harness", "harness_chars": len(feedback)},
+                }
+            else:
+                decision = self.before_execute(action, state)
+                if decision.allowed:
+                    plugin = self.model.tool_plugins.get(action.get("tool"))
+                    result = (
+                        plugin.execute_tool(action, state)
+                        if plugin
+                        else self.env.execute(action)
+                    )
+                    # Detect submission from actual output, not a regex over the command.
+                    lines = result.get("output", "").lstrip().splitlines()
+                    if (
+                        result.get("returncode") == 0
+                        and lines
+                        and lines[0].strip()
+                        == "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
+                    ):
+                        decision = self.before_submit(action, state)
+                        if decision.allowed:
+                            self.env.check_finished(result)
+                        else:
+                            result = {
+                                "output": decision.feedback,
+                                "returncode": -1,
+                                "exception_info": "",
+                                "extra": {"origin": "harness"},
+                            }
+                            self.events.write(
+                                type="submit_gate",
+                                step=state.step,
+                                rule_id=decision.rule_id,
+                            )
+                else:
+                    result = {
+                        "output": decision.feedback,
+                        "returncode": -1,
+                        "exception_info": "",
+                        "extra": {"origin": "harness"},
+                    }
+            if index == 0 and c2_extra_calls:
+                note = (
+                    f"NOTE: {c2_extra_calls} extra tool call(s) were ignored; "
+                    "send one command per response."
+                )
+                output = result.get("output", "")
+                separator = "" if not output or output.endswith("\n") else "\n"
+                extra = dict(result.get("extra") or {})
+                extra["harness_chars"] = int(extra.get("harness_chars", 0)) + len(
+                    separator + note
+                )
+                result = {
+                    **result,
+                    "output": output + separator + note,
+                    "extra": extra,
                 }
             outputs.append(self.after_execute(action, result, state))
         return self.add_messages(

@@ -1,8 +1,16 @@
 # Project Status and Handoff
 
-Last updated **2026-10-14** (Rohit's Windows laptop, WSL2). Read this first when picking the project up on another machine or in a new Claude Code session, then [`CLAUDE.md`](../CLAUDE.md) and [`system_architecture.md`](../system_architecture.md).
+Base snapshot **2026-10-14** (Rohit's Windows laptop, WSL2); update **2026-10-19**. Read this first when picking the project up on another machine or in a new Claude Code session, then [`CLAUDE.md`](../CLAUDE.md) and [`system_architecture.md`](../system_architecture.md).
 
 > **For a new Claude Code session:** this file holds the context of the earlier sessions. Start with: *"Read docs/STATUS.md, CLAUDE.md and system_architecture.md, then continue from 'Next steps'."*
+
+### Update — 2026-10-19
+
+- Abin's partial C1/C3 dev runs and logs are published on `main`. C1 has 7 scored trials out of 10 attempts; C3 has 8. This is not a completed B0/H0 parity study. See the [trajectory review and limitations](../results/dev/c1-c3-dev/README.md).
+- Trajectory review found 40 `format_error` events per configuration, two C1 offloads (both in task 009), and no C3 `cap_reached` event. Do not draw component-effectiveness conclusions from these partial runs.
+- Regression tests now cover the cost collector's complete call-log and mini-swe trajectory inputs, null usage rejection, provider validation, and empty logs. The policy for reporting calls with unknown usage remains open; missing usage must not be presented as zero cost.
+- The C2/C4/C5 implementation passes the full pinned offline suite (99 tests); V's integration preflight imports all plugin factories. The task-leak scan is blocked because `data/TUA-Bench/tasks` is absent from this checkout.
+- Next validation steps: obtain team approval for the C2/C4/C5 dev smoke test, review guardrail blocks from suitable logs, complete matched B0/H0 dev runs, rerun infrastructure/API failures without replacing the original attempts, and finish component checks before drawing comparisons.
 
 ---
 
@@ -17,12 +25,12 @@ Last updated **2026-10-14** (Rohit's Windows laptop, WSL2). Read this first when
 | Eval oracle gate | **Done.** 40/40 settled on Mac + x86, 4 tasks swapped for reserves that pass (§2). Logs: `results/oracle-gate/eval-mac/`, `eval-x86/`, `reserve-x86/` |
 | Model choice and price table | **Done and frozen** (2026-10-13, Ulfa). gpt-oss-20b on Darkbloom (base), gpt-oss-120b on Venice (expensive); `configs/pricing.json`, `configs/models/`, evidence in `docs/model_selection.md` and `results/pilots/` |
 | B_task | **Frozen:** $0.01 per task (base), $0.0167 (V-E), with the 50-step cap. Reasoning in architecture §6 |
-| Harness core | **On `main`** (2026-10-14, Abin): Harbor agent, loop with hooks, container adapter, OpenRouter gateway with call logging, C1, C3, guardrails (Isha) wired in, leak check before paid runs. 41 offline tests pass (`uv run --frozen python -m pytest -q tests`). Live H0 run on dev not done yet. Hook contract: `docs/harness_core.md` |
-| C0 prompt, V/V-E configs, multi-config runner | **Written** (2026-10-14, Rohit): `agent_instructions.md` v3, `configs/harness/` (all 11 configurations), `scripts/run_all_configs.py`. V and V-E stay blocked until C2/C4/C5 exist |
-| C2, C4, C5 | In progress (Isha), due Thu 15 |
+| Harness core | **On `main`** (2026-10-14, Abin): Harbor agent, loop with hooks, container adapter, OpenRouter gateway with call logging, C1, C3, guardrails (Isha) wired in, leak check before paid runs. Partial C1/C3 dev results are published; B0/H0 parity and infrastructure-failure reruns remain pending. Hook contract: `docs/harness_core.md`; results: [`results/dev/c1-c3-dev/`](../results/dev/c1-c3-dev/) |
+| C0 prompt, V/V-E configs, multi-config runner | **Written** (2026-10-14, Rohit): `agent_instructions.md` v3, `configs/harness/` (all 11 configurations), `scripts/run_all_configs.py`. V and V-E plugin factories are now present on `isha/c2-c4-c5`; full integration validation remains pending |
+| C2, C4, C5 | Implemented on `isha/c2-c4-c5`; full pinned suite passes (99 tests), and V integration factories import. Task-leak scan awaits local TUA-Bench tasks; paid smoke test and broader false-positive review remain pending. See [`docs/tasks.md` §2](tasks.md#2-isha-c2-c4-and-c5) |
 | Experiments, report | Not started. Owners and dates in §4 |
 
-### Progress by workstream
+### Progress by workstream (2026-10-14 snapshot)
 
 | Workstream | Weight | Done | Weighted |
 |---|---|---|---|
@@ -88,7 +96,7 @@ All four replacements passed the oracle (`results/oracle-gate/reserve-x86/`). Ca
 |---|---|---|---|
 | Rohit | Lead: infrastructure, integration, C0 prompt, freeze, presentation | Oracle gate, subset freeze, C0 prompt v3, all 11 harness configs, `run_all_configs.py` | Review C2/C4/C5 when they land; dev smoke test of V; tag harness v1 Fri 16; run schedule; lecture slides to Isha |
 | Abin | Harness core: agent, container adapter, gateway and logs, H0 parity, C1, C3 | Core, gateway, C1, C3, guardrail integration, leak gate (41 tests) | Live H0 on the 10 dev tasks vs Ulfa's B0 pilot; then C1 alone and C3 alone (note where C3 stops) |
-| Isha | Guardrails with tests, C2/C4/C5, task-leak check, false-positive review, guardrails §8 | Guardrails (16 rules), leak check | C2/C4/C5 as three plugins by Thu 15 (branch from `main`, not `isha/guardrails`); false-positive review after H0 runs |
+| Isha | Guardrails with tests, C2/C4/C5, task-leak check, false-positive review, guardrails §8 | Guardrails and leak check integrated on `main`; C2/C4/C5 plugins, 99 passing offline tests, and V factory preflight on `isha/c2-c4-c5`; partial-trajectory review and collector regression tests documented | Task-leak scan once benchmark checkout is present; push/review branch; approved dev smoke test; false-positive review when guardrail events are available; §8 after lecture slides |
 | Ulfa | Price table, model pilot, B_task, cost and statistics scripts, results section | Pricing, pilots, frozen model pair, `collect_costs.py` prototype | Make `collect_costs.py` read the harness `calls.jsonl`, including `null` usage; then `analyze.py` and `plot_pareto.py` |
 
 Harness v1 freezes **Fri 16 Oct**, eval runs **16–19 Oct**, report **by 22 Oct**, presentation **23 Oct**.
