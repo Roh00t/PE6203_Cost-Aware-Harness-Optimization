@@ -8,7 +8,7 @@ This implements Abin's host agent, loop hooks, configuration loader, prompt sele
 - Scripted H0 comparisons cover successful submission and three consecutive format errors against stock DefaultAgent. This is not measured benchmark parity.
 - Live Ubuntu/Docker execution and B0/H0 dev parity remain to be run.
 - Integrated Isha's guardrails and leak scanner from branch isha/guardrails, commit 47ff409. The adapter invokes her actual check_command API; G rules apply in every configuration and U rules only when C2 is enabled. Fixed numeric/version false positives and sentence-final filename extraction in the leak scanner, with a regression test.
-- C2/C4/C5 are Isha's implementations; their hooks are available, but those components are not claimed complete here. No V or V-E config is supplied until they are integrated.
+- C2/C4/C5 are implemented as independent plugins on Isha's `isha/c2-c4-c5` branch. Offline component tests use fake services; no Docker or API calls are needed. Paid dev smoke tests and false-positive review remain pending.
 - The user-created configs/harness_core.py outline is retained and is not imported by this package.
 
 ## Files and dependencies

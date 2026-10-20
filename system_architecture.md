@@ -272,7 +272,7 @@ results/summary.csv               # one row per configuration: success, $/run, t
 results/pareto.png                # accuracy–cost plot with frontier
 ```
 
-`events.jsonl` types: `guardrail_block`, `format_error`, `repeat_intercept`, `stall_nudge`, `offload`, `compaction`, `budget_nudge`, `submit_gate`, `command_timeout`, `api_retry`, `cap_reached`. Each event carries `rule_id` where relevant. These events drive the failure classification (§10.4).
+`events.jsonl` types: `guardrail_block`, `format_error`, `extra_tool_calls_ignored`, `repeat_intercept`, `stall_nudge`, `offload`, `compaction`, `budget_nudge`, `submit_gate`, `command_timeout`, `api_retry`, `cap_reached`. Each event carries `rule_id` where relevant. These events drive the failure classification (§10.4).
 
 ---
 

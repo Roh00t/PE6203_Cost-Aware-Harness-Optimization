@@ -1,10 +1,10 @@
-# Team Tasks: Wed 14 – Fri 23 October
+# Team Tasks: 14–23 October (status refreshed 19 October)
 
 Step-by-step instructions for each of us, from now until the presentation. Each task says what to read, what to build or run, how to check it, and when it is due. Background and history: [`docs/STATUS.md`](STATUS.md). Design: [`system_architecture.md`](../system_architecture.md). Progress page: https://claude.ai/artifact/D1a8FLLj5aqiAAeXWSBWSN
 
-**Where we are (Wed 14 Oct, about 50 % of the weighted plan):** the 40-task subset is frozen, the models and budget are frozen, the harness core is on `main` with C1, C3 and the guardrails, and the C0 prompt, all 11 configurations and the experiment runner are written. What's left before the Friday freeze: C2, C4 and C5, the cost collector, and live checks on the dev tasks.
+**Status snapshot (Mon 19 Oct):** the subset, models and budget remain frozen. The harness core, C1/C3, guardrails, leak-check gate, C0 prompt, configurations and runner are on `main`. Partial C1/C3 dev logs have been published, but B0/H0 parity and infrastructure-failure reruns are still pending. C2/C4/C5 are not present in the current `main` checkout; Isha's remaining work is summarized in §2 below. See [`docs/STATUS.md`](STATUS.md) and the [partial-run handoff](../results/dev/c1-c3-dev/README.md) for evidence.
 
-| Date | Milestone | Owner |
+| Original target date | Planned milestone (historical; see status sections for actual completion) | Owner |
 |---|---|---|
 | Thu 15 Oct | Live H0 check done; C2, C4, C5 pushed; collector reads harness logs | Abin, Isha, Ulfa |
 | Fri 16 Oct | Harness v1 frozen and tagged; eval runs start | Rohit, then all |
@@ -109,7 +109,30 @@ Inside each trial folder (`jobs/<run>/<config>/<task>/<task>__<id>/`): `agent/ca
 
 ## 2. Isha: C2, C4 and C5
 
-**Goal:** the three remaining components, each as its own plugin so it can be switched off alone. **Due:** Thu 15 Oct, end of day (pushed to a branch). **Cost:** free until the dev smoke test (step 8).
+**Goal:** implement and validate the three remaining components as independent plugins. Original due date: Thu 15 Oct (elapsed). **No paid runs are authorized by this checklist**; obtain approval before the dev smoke test in step 8.
+
+### Isha status (checked 19 Oct)
+
+**Completed**
+
+- Guardrail rules and unit tests are implemented; guardrails are integrated on `main`.
+- The task-leak checker and paid-run gate are implemented and covered by tests. The checker’s live scan requires the local `data/TUA-Bench/tasks` checkout, which is not available in every clone.
+- C2, C4 and C5 are implemented as independent plugins in `harness/components/tools.py`, `recovery.py`, and `submit_gate.py`; fake-service behavior tests are in `tests/test_components.py`.
+- The C2 loop enforces one executed action per response while returning a result for each tool-call ID. A regression test also checks that H0 retains multi-action behavior.
+- The full pinned offline suite passes: 99 tests. `scripts/check_harness.py --config configs/harness/V.yaml` reports `OK: integration factories import`.
+- The approved C2/C4/C5 dev smoke-test command was attempted for the two planned tasks, but all six trials stopped at the runner preflight because `data/TUA-Bench` is absent. No Harbor trial or model call started; no spend occurred.
+- The published C1/C3 trajectories have been reviewed and the limitations documented in [`results/dev/c1-c3-dev/README.md`](../results/dev/c1-c3-dev/README.md). They contain no `guardrail_block` events, so they do not yet provide evidence for the false-positive review.
+- Collector regression tests for complete/incomplete usage and provider validation are added in [`tests/test_collect_costs.py`](../tests/test_collect_costs.py). This is supporting test work, not a decision to change Ulfa’s collector policy.
+
+**Still open**
+
+- Run `scripts/check_no_task_leak.py` once the pinned TUA-Bench task checkout is present. The command was attempted but this checkout does not contain `data/TUA-Bench/tasks`.
+- Push the implementation branch and request review from Abin and Rohit.
+- Restore the pinned TUA-Bench checkout, then coordinate before retrying the two-task C2/C4/C5 dev smoke test. The approved attempt stopped before trials began; preserve its runner record and verify component events on a successful run.
+- Complete a false-positive review when dev logs contain `guardrail_block` events. The published partial C1/C3 logs contain none.
+- Complete guardrails §8 after Rohit supplies the course lecture slides.
+
+The implementation instructions below document the acceptance criteria and validation steps; the historical dates are not evidence that a task was completed.
 
 **Read first:**
 - `system_architecture.md` section 5, the parts "C2 · Tool interface", "C4 · Failure detection and recovery", "C5 · Pre-submission verification gate". These are the specs.
@@ -125,7 +148,7 @@ Inside each trial folder (`jobs/<run>/<config>/<task>/<task>__<id>/`): `agent/ca
 | C4 | `harness/components/recovery.py` | `build_hook(config, services)` | `components = frozenset({"C4"})` |
 | C5 | `harness/components/submit_gate.py` | `build_hook(config, services)` | `components = frozenset({"C5"})` |
 
-1. **Branch** from fresh `main` (not from `isha/guardrails`, which is already copied into `main` with fixes):
+1. **Branch** from fresh `main` for the component implementation (the earlier `isha/guardrails` work is already integrated into `main`):
    ```bash
    git checkout main && git pull && git checkout -b isha/c2-c4-c5
    ```

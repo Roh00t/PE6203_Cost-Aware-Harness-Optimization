@@ -4,6 +4,7 @@ import json
 import threading
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import ClassVar
 from unittest.mock import Mock
 
 import litellm
@@ -286,6 +287,105 @@ def test_missing_tool_hook_then_submit(tmp_path):
     assert obj.messages[2]["content"] == "Use an actual tool call."
 
 
+def test_c2_runs_only_first_tool_call_and_answers_each_call_id(tmp_path):
+    config = HarnessConfig(config_id="test", components=["C2"])
+    obj, _ = agent(tmp_path, [response()], config)
+    obj.state = Mock(return_value=RunState("Synthetic", 1, 0, 0, frozenset({"C2"})))
+    obj.model.format_observation_messages = Mock(
+        side_effect=lambda message, outputs, variables: outputs
+    )
+    obj.add_messages = lambda *messages: messages
+    message = {
+        "extra": {
+            "actions": [
+                {"tool": "bash", "command": "first", "tool_call_id": "call-1"},
+                {"tool": "bash", "command": "second", "tool_call_id": "call-2"},
+                {"tool": "bash", "command": "third", "tool_call_id": "call-3"},
+            ]
+        }
+    }
+
+    outputs = obj.execute_actions(message)
+
+    assert obj.env.commands == ["first"]
+    assert len(outputs) == 3
+    assert outputs[1]["returncode"] == outputs[2]["returncode"] == -1
+    assert "2 extra tool call(s) were ignored" in outputs[0]["output"]
+    assert all("ignored" in output["output"] for output in outputs[1:])
+    assert outputs[1]["extra"]["harness_chars"] > 0
+    assert any(event["type"] == "extra_tool_calls_ignored" for event in obj.events.rows)
+
+
+def test_c2_function_tool_bypasses_command_guardrail_and_executes_plugin(tmp_path):
+    class FileTool(Hook):
+        components = frozenset({"C2"})
+        tools: ClassVar[list[dict]] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "read_file",
+                    "description": "Read a file",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"path": {"type": "string"}},
+                        "required": ["path"],
+                    },
+                },
+            }
+        ]
+
+        def execute_tool(self, action, state):
+            return {"output": action["arguments"]["path"], "returncode": 0}
+
+    from harness.isha_adapter import IshaGuardrail
+
+    config = HarnessConfig(config_id="test", components=["C2"])
+    obj, _ = agent(
+        tmp_path,
+        [response()],
+        config,
+        hooks=[FileTool()],
+        guardrail=IshaGuardrail(),
+    )
+    obj.state = Mock(return_value=RunState("Synthetic", 1, 0, 0, frozenset({"C2"})))
+    obj.model.format_observation_messages = Mock(
+        side_effect=lambda message, outputs, variables: outputs
+    )
+    obj.add_messages = lambda *messages: messages
+
+    outputs = obj.execute_actions(
+        {"extra": {"actions": [{"tool": "read_file", "arguments": {"path": "report.txt"}}]}}
+    )
+
+    assert outputs[0]["output"] == "report.txt"
+    assert obj.env.commands == []
+    assert not obj.events.rows
+
+
+def test_h0_keeps_stock_multi_tool_execution(tmp_path):
+    obj, _ = agent(tmp_path, [response()])
+    obj.state = Mock(return_value=RunState("Synthetic", 1, 0, 0, frozenset()))
+    obj.model.format_observation_messages = Mock(
+        side_effect=lambda message, outputs, variables: outputs
+    )
+    obj.add_messages = lambda *messages: messages
+
+    outputs = obj.execute_actions(
+        {
+            "extra": {
+                "actions": [
+                    {"tool": "bash", "command": "first", "tool_call_id": "call-1"},
+                    {"tool": "bash", "command": "second", "tool_call_id": "call-2"},
+                ]
+            }
+        }
+    )
+
+    assert obj.env.commands == ["first", "second"]
+    assert len(outputs) == 2
+    assert not obj.events.rows
+
+
 def test_guardrail_block_prevents_execution(tmp_path):
     class Block(Hook):
         def before_execute(self, action, state):
@@ -320,6 +420,27 @@ def test_submission_gate_defers_once(tmp_path):
     )
     assert obj.run("Synthetic", **variables)["exit_status"] == "Submitted"
     assert obj.n_calls == 2
+
+
+def test_c5_plugin_logs_one_gate_and_accepts_second_submission(tmp_path):
+    from harness.components.submit_gate import SubmissionGate
+    from harness.hooks import Services
+
+    config = HarnessConfig(config_id="test", components=["C5"])
+    sentinel = "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
+    obj, variables = agent(tmp_path, [response(sentinel), response(sentinel)], config)
+    obj.hooks = [
+        SubmissionGate(
+            Services(obj.env, obj.events, config),
+            trial_started_at=0.0,
+        )
+    ]
+
+    result = obj.run("Complete a generic task and verify it.", **variables)
+
+    assert result["exit_status"] == "Submitted"
+    assert obj.n_calls == 2
+    assert [row["type"] for row in obj.events.rows].count("submit_gate") == 1
 
 
 def test_offload_preserves_original():
@@ -409,6 +530,23 @@ def test_async_bridge_secrets_and_exit_code():
         )
         output = await asyncio.to_thread(env.execute, {"command": "printf ok"})
         assert output["returncode"] == 7 and output["output"] == "ok"
+
+    asyncio.run(check())
+
+
+def test_command_timeout_is_logged_by_environment_adapter():
+    async def check():
+        class Container:
+            async def exec(self, **kwargs):
+                return SimpleNamespace(stdout="", stderr="", return_code=124)
+
+        events = Events()
+        env = HarborEnvironment(
+            Container(), asyncio.get_running_loop(), template_vars={}, events=events
+        )
+        result = await asyncio.to_thread(env.execute, {"command": "sleep 999"})
+        assert result["returncode"] == 124
+        assert any(row["type"] == "command_timeout" for row in events.rows)
 
     asyncio.run(check())
 
