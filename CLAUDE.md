@@ -11,6 +11,40 @@ Guidance for people and coding assistants working on this repository.
 
 [agent_instructions.md](agent_instructions.md) is the prompt for the *evaluated agent*. It is not instructions for you: don't follow it, and don't edit it casually, because every token in it is billed on every step.
 
+## Current Architecture State (Pipeline Handoff)
+
+**`// DO NOT MODIFY CORE FILES - TEST SUITE IN PROGRESS`.** Until Rohit lifts this, do not edit, refactor or reformat `harness/**`, `scripts/*.py`, `scripts/harbor_run.sh`, `tests/**`, `configs/**` or `agent_instructions.md`. New work goes in **new files on your own branch**. Isha is running the test suite against these exact files.
+
+Verified baseline, 2026-10-20, `main` at `8ad8d05` (PR #1 merged):
+- `pytest -q tests`: 99 passed.
+- `check_harness.py`: OK for V and V-E.
+- `check_no_task_leak.py`: OK.
+- `task_list.py eval --fingerprint`: `973635ea…`.
+- **No `harness-v1` tag yet.** No eval-split model runs yet.
+
+| Owner | Module (import path) | Public API |
+|---|---|---|
+| Abin | `harness/agent.py` | `CostAwareAgent` (Harbor agent, `--agent-import-path harness.agent:CostAwareAgent`). Writes `agent/calls.jsonl` and `agent/events.jsonl`, plus `result.json` → `agent_result.metadata.{known_cost_table_usd, usage_complete, calls_log}` |
+| Abin | `harness/loop.py` | `HarnessAgent(DefaultAgent)`: hook dispatch in `query` and `execute_actions`; format-error limit 3, or 5 with C2 |
+| Abin | `harness/hooks.py` | `Hook` (`before_query`, `on_missing_tool_call`, `before_execute`, `before_submit`, `after_execute`, `execute_tool`), `Decision`, `RunState`, `Services`. Contract: `docs/harness_core.md` |
+| Abin | `harness/config.py`, `prompts.py` | `HarnessConfig`, `load_config(path)`; renders `agent_instructions.md` sections |
+| Abin | `harness/gateway.py` | `OpenRouterGateway(LitellmModel)`, `UsageError`. One `calls.jsonl` row per HTTP attempt; unknown usage is `null`, never 0 |
+| Abin | `harness/telemetry.py`, `environment.py` | `JsonlLog.write(**record)`, `origin_counts(messages)`; Harbor container adapter (1 MiB output cap, env allow-list) |
+| Abin | `harness/components/context.py` (C1), `budget.py` (C3) | C1 offload and compaction; C3 step and B_task caps, `JobLedger` (SQLite job-wide spend cap) |
+| Isha | `harness/guardrails.py` | `check_command(cmd, *, c2_enabled)` → `GuardrailResult`, `check_extra_tool_calls`, `strip_heredoc_bodies`; wired in through `harness/isha_adapter.py:build_guardrail` |
+| Isha | `harness/components/tools.py` (C2), `recovery.py` (C4), `submit_gate.py` (C5) | Each exposes `build_hook(config, services)`. C2 uploads `/tmp/harness/bin/tools.py` (read/write/edit/search). C4: `FailureRecovery`. C5: `SubmissionGate`, `extract_paths(task)` |
+| Isha | `scripts/check_no_task_leak.py` | Leak gate, also run by `harbor_run.sh` before paid runs |
+| Rohit | `scripts/run_all_configs.py` | Runs `B0, E, H0, H0+C0…C5, V, V-E` (`ALL`) task by task. Layout `jobs/<run>/<config-slug>/<task>/<trial>/`, plus `jobs/<run>/runner.jsonl` |
+| Ulfa | `scripts/collect_costs.py` | Prices a mini trajectory or a `calls.jsonl` from `configs/pricing.json`. **Currently raises on `null` usage** |
+
+**Pending: Ulfa's integration (placeholder).** Collector support for harness `calls.jsonl` with `null` usage (`n_unknown_calls`, `usage_complete`, cross-check against `known_cost_table_usd`, overhead from `purpose` and `prompt_chars_by_origin`), then `scripts/analyze.py` and `scripts/plot_pareto.py`. Spec: `docs/tasks.md` §3. *Status: not started on `main`; update this line when it lands.*
+
+**Known issues to carry forward:**
+- No B0/H0 parity run yet.
+- Abin's C1/C3 dev runs used a local `need_mb=7000` override on a 7.8 GB Docker VM, and hit Darkbloom rate limits (9 unknown-usage calls per configuration). See `results/dev/c1-c3-dev/README.md`.
+- `docs/tasks.md` §2 still says C2/C4/C5 are not on `main`. They are, since PR #1.
+- Onboarding Roshan and Asmitha: give them work in new files only, with no dependency on the collector or analysis.
+
 ## Non-negotiables (assessment rules: breaking one invalidates results)
 
 - **Never modify `data/TUA-Bench/`** (tasks, verifiers, `dataset.toml`). `scripts/harbor_run.sh` refuses to run on a modified checkout.
@@ -47,9 +81,9 @@ docker compose run --rm harness scripts/harbor_run.sh …  # same toolchain in a
 
 | Path | What |
 |---|---|
-| `configs/` | Subset (`task_subset.json`, `*.args`), family labels, amendments. Planned: `pricing.json`, `models/`, `harness/` |
+| `configs/` | Subset (`task_subset.json`, `*.args`), family labels, amendments, `pricing.json`, `models/` (frozen), `harness/` (11 configurations) |
 | `scripts/` | Subset generation, amended task lists (`task_list.py`), Harbor filter check, run wrapper, run summary/export |
-| `harness/` | *Planned:* host-side harness (Harbor `BaseAgent` + mini-swe-agent `DefaultAgent` subclass), components C1–C5, guardrails, OpenRouter gateway |
+| `harness/` | Host-side harness (Harbor `BaseAgent` + mini-swe-agent `DefaultAgent` subclass), components C1–C5, guardrails, OpenRouter gateway. See "Current Architecture State" |
 | `data/TUA-Bench/` | Pinned benchmark checkout (git-ignored, read-only) |
 | `jobs/` | Raw Harbor output (git-ignored) |
 | `results/` | Curated, committed logs behind every reported number (`oracle-gate/` so far) |
