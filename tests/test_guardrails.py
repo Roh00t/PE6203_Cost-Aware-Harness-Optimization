@@ -62,7 +62,7 @@ class GuardrailCommandTests(unittest.TestCase):
             ("vim file", "cat file", "U-INT-01"),
             ("tail -f app.log", "tail -n 50 app.log", "U-INT-02"),
             ("python", "python -c 'print(1)'", "U-INT-03"),
-            ("sudo apt update", "sudo -n apt update", "U-INT-04"),
+            ("ssh host ls", "ssh -o BatchMode=yes host ls", "U-INT-04"),
         )
         for blocked, allowed, rule_id in cases:
             with self.subTest(rule=rule_id):
@@ -70,6 +70,19 @@ class GuardrailCommandTests(unittest.TestCase):
                 self.assertEqual(result.rule_id, rule_id)
                 self.assertTrue(result.blocked)
                 self.assertEqual(check_command(allowed, c2_enabled=True).action, "allow")
+
+    def test_sudo_is_logged_not_blocked(self) -> None:
+        # Dev review 2026-10-21: task containers grant passwordless sudo, so blocking it was a
+        # false positive that rejected a correct `sudo useradd ...` command.
+        result = check_command("sudo useradd -m charles && echo 'charles:pw' | sudo chpasswd", c2_enabled=True)
+        self.assertEqual((result.rule_id, result.action, result.message), ("U-INT-05", "log", None))
+        self.assertFalse(result.blocked)
+        self.assertEqual(check_command("sudo -n apt update", c2_enabled=True).action, "allow")
+        self.assertEqual(check_command("sudo apt update").action, "allow")  # C2 off: not checked
+        # Logged last, so it never hides a blocking rule on the same command.
+        self.assertEqual(check_command("sudo vim /etc/hosts", c2_enabled=True).rule_id, "U-INT-01")
+        self.assertEqual(check_command("sudo ssh host ls", c2_enabled=True).rule_id, "U-INT-04")
+        self.assertEqual(check_command("sudo rm -rf /", c2_enabled=True).rule_id, "G-DST-01")
 
     def test_c2_format_rules(self) -> None:
         cases = (

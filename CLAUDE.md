@@ -15,7 +15,11 @@ Guidance for people and coding assistants working on this repository.
 
 **`// DO NOT MODIFY CORE FILES - TEST SUITE IN PROGRESS`.** Until Rohit lifts this, do not edit, refactor or reformat `harness/**`, `scripts/*.py`, `scripts/harbor_run.sh`, `tests/**`, `configs/**` or `agent_instructions.md`. New work goes in **new files on your own branch**. Isha is running the test suite against these exact files.
 
-**Freeze exception, 2026-10-21 (Rohit), branch `rohit/fix-c2-deadlock`, for issue #2 only:** H0+C2 trials hung forever because C2 uploaded its helper from its constructor, which runs on Harbor's event-loop thread, where `HarborEnvironment._wait` deadlocks (and Harbor's agent timeout can't fire). Changed: `harness/components/tools.py` (upload on first tool use), `harness/environment.py` (`_wait` raises instead of deadlocking on the loop thread), `harness/gateway.py` (600 s per-request timeout), `tests/test_components.py` (one assertion now expects the deferred upload), new `tests/test_c2_deadlock_regression.py`. Offline: 103 passed. Nothing else is unfrozen.
+**Freeze exception, 2026-10-21 (Rohit), branch `rohit/fix-c2-deadlock`, for issue #2 only:** H0+C2 trials hung forever because C2 uploaded its helper from its constructor, which runs on Harbor's event-loop thread, where `HarborEnvironment._wait` deadlocks (and Harbor's agent timeout can't fire). Changed: `harness/components/tools.py` (upload on first tool use), `harness/environment.py` (`_wait` raises instead of deadlocking on the loop thread), `harness/gateway.py` (600 s per-request timeout), `tests/test_components.py` (one assertion now expects the deferred upload), new `tests/test_c2_deadlock_regression.py`. Offline: 103 passed.
+
+**Second exception, same day (guardrail false-positive review, `guardrails.md` §7):** the live smoke runs showed U-INT-04 blocking a correct `sudo useradd …` on dev task 106 in H0+C2, V and V-E (task containers grant passwordless sudo). `sudo` is now the log-only rule U-INT-05 (checked last); U-INT-04 still blocks `ssh`/`scp` without `BatchMode`. Changed: `harness/guardrails.py`, `guardrails.md` §3.2–3.3, `tests/test_guardrails.py`. Offline: 104 passed. Nothing else is unfrozen.
+
+**Live smoke validation, 2026-10-21 (Rohit, Windows/WSL2, dev tasks 020 and 106, 11 trials, ~$0.021 known + 28 rate-limited calls of unknown cost):** no hangs, no exceptions. C2's file tools used; C4 `repeat_intercept` ×3 and `stall_nudge` ×1; C5 `submit_gate` fired in 4 trials; V-E ran on gpt-oss-120b/Venice and solved 106. Logs are in the WSL clone under `jobs/rohit-c2-smoke`, `jobs/rohit-c245-smoke`, `jobs/rohit-v-smoke` (not exported). Issue #2 is resolved by these two changes.
 
 Verified baseline, 2026-10-20, `main` at `8ad8d05` (PR #1 merged):
 - `pytest -q tests`: 99 passed.
@@ -42,9 +46,11 @@ Verified baseline, 2026-10-20, `main` at `8ad8d05` (PR #1 merged):
 **Pending: Ulfa's integration (placeholder).** Collector support for harness `calls.jsonl` with `null` usage (`n_unknown_calls`, `usage_complete`, cross-check against `known_cost_table_usd`, overhead from `purpose` and `prompt_chars_by_origin`), then `scripts/analyze.py` and `scripts/plot_pareto.py`. Spec: `docs/tasks.md` §3. *Status: not started on `main`; update this line when it lands.*
 
 **Known issues to carry forward:**
-- No B0/H0 parity run yet.
+- No B0/H0 parity run yet (planned from the first eval tasks, `docs/RECOVERY_PLAN.md`).
+- Darkbloom (the pinned 20b provider) rate-limits heavily: up to 14 of 36 calls in one smoke trial. The gateway retries 3 times; stagger machine start times and rerun trials that end in infrastructure errors.
+- gpt-oss-20b still often ends with `RepeatedFormatError` even with C2 (limit 5). That is a result to report, not a bug.
 - Abin's C1/C3 dev runs used a local `need_mb=7000` override on a 7.8 GB Docker VM, and hit Darkbloom rate limits (9 unknown-usage calls per configuration). See `results/dev/c1-c3-dev/README.md`.
-- `docs/tasks.md` §2 still says C2/C4/C5 are not on `main`. They are, since PR #1.
+- `docs/tasks.md` §2 still says C2/C4/C5 are not on `main`. They are, since PR #1, and they passed the live smoke test above.
 - Onboarding Roshan and Asmitha: give them work in new files only, with no dependency on the collector or analysis.
 
 ## Non-negotiables (assessment rules: breaking one invalidates results)

@@ -2,6 +2,23 @@
 
 Drafted 2026-10-20 by Rohit. It replaces the dates in [`docs/tasks.md`](tasks.md) from today; the step-by-step instructions there still apply.
 
+## Update Wed 21, evening: harness validated, handoff
+
+- **Issue #2 fixed.** The "C2 hangs on the Mac" problem was a deadlock in the code (it hung on every machine): C2 uploaded its helper while the plugin was built on Harbor's event-loop thread. Fixed, with regression tests and a 600 s per-request timeout. Details in `CLAUDE.md`.
+- **Live smoke test passed** on Rohit's Windows laptop: C2, C4, C5, V and V-E on dev tasks 020 and 106, 11 trials, no hangs or exceptions, every component's events seen, about $0.02.
+- **Guardrail false positive fixed.** U-INT-04 blocked a correct `sudo useradd …`; `sudo` is now logged (U-INT-05), `ssh`/`scp` without BatchMode still blocked.
+- **104 offline tests pass.** The eval runs use `main` from this commit on.
+- **Darkbloom rate limits are heavy** (up to 14 of 36 calls in one trial): stagger start times by 15+ minutes and rerun infrastructure errors.
+
+| Who | Remaining work |
+|---|---|
+| Abin | Lead the overnight eval runs (passes 1 → 3 below) and monitor them: rate limits, infrastructure errors, reruns, exports |
+| Ulfa | `collect_costs.py`: handle `null` usage (`n_unknown_calls`, `usage_complete`, cross-check with `known_cost_table_usd`; rewrite `tests/test_collect_costs.py`, which still expects a raise); then `scripts/analyze.py` and `scripts/plot_pareto.py` |
+| Isha | Final test-suite run on `main`, guardrail documentation (`guardrails.md` §7 false-positive record including U-INT-05, §8 with Asmitha), guardrails section of the report |
+| Roshan | Tests for the run tooling (`tests/test_task_list.py`, `tests/test_export_run.py`, …) and `scripts/classify_failures.py` |
+| Asmitha | `docs/guardrails_framework_mapping.md` (lecture slides in `docs/Week07…Week12`) and the failure trajectory catalog (`docs/failure_catalog.md`) |
+| Rohit | Report framing, final edit, presentation; reachable for decisions only |
+
 **Where we are.** The harness is complete and passes the offline suite (99 tests); V and V-E pass the integration check; the subset, models and budget are frozen. Not done yet: a live run of the full harness on dev, the `harness-v1` freeze, and any eval-split model run. The report is due **Thu 22** and the presentation is **Fri 23**.
 
 **What limits us.** Machine time, not money. Measured so far: the first image build of a task takes about 4–7 minutes (about 1 minute once cached), and agent time is about 1–2 minutes per trial. A trial costs about $0.001, so all 440 eval trials are about $1–2.

@@ -89,7 +89,8 @@ The harness checks each proposed command *before* execution. **Always-on** rules
 | U-INT-01 | Full-screen editors, pagers, monitors | segment start + `(sudo\s+)?(vi\|vim\|nvim\|nano\|emacs\|pico\|less\|more\|top\|htop\|man\|watch)\b` | block |
 | U-INT-02 | Follow mode, which never exits | `\btail\s+(-\w*f\w*\|--follow)\b`, `\bjournalctl\b[^;&\|]*\s-f\b` | block |
 | U-INT-03 | Bare REPLs waiting on stdin | segment start + `(python3?\|ipython\|node\|irb\|sqlite3\|psql\|mysql)\s*(?=$\|[;&\|])` | block |
-| U-INT-04 | Password prompts that hang | `\bsudo\b(?!\s+-n\b)`, `\b(ssh\|scp)\b(?![^;&\|]*BatchMode=yes)` | block |
+| U-INT-04 | Password prompts that hang | `\b(ssh\|scp)\b(?![^;&\|]*BatchMode=yes)` | block |
+| U-INT-05 | `sudo` without `-n` (narrowed from U-INT-04 after the dev review, 2026-10-21: task containers grant passwordless sudo, so blocking it rejected a correct `sudo useradd …`) | `\bsudo\b(?!\s+-n\b)`, checked after every other rule | log |
 | U-FMT-01 | Empty command | `^\s*$` | block |
 | U-FMT-02 | Over-long command | length > 8,000 characters | block |
 | U-FMT-03 | Unterminated heredoc | `<<-?\s*['"]?(\w+)['"]?` with no later line equal to the delimiter | block |
@@ -107,7 +108,8 @@ Messages are short on purpose (they are billed tokens) and always say what to do
 | U-INT-01 | `BLOCKED [U-INT-01]: '{program}' is interactive and would hang. Read with cat/head/sed -n, edit with sed, python, or cat <<'EOF' > file.` |
 | U-INT-02 | `BLOCKED [U-INT-02]: follow mode never exits. Use 'tail -n 50 FILE' and run it again to poll.` |
 | U-INT-03 | `BLOCKED [U-INT-03]: a bare '{program}' waits for input. Use '{program} -c "..."', '{program} script', or pipe input in.` |
-| U-INT-04 | `BLOCKED [U-INT-04]: this would wait for a password. Use 'sudo -n …' (fails fast without rights) or '-o BatchMode=yes'.` |
+| U-INT-04 | `BLOCKED [U-INT-04]: this would wait for a password. Use '-o BatchMode=yes' so it fails fast instead.` |
+| U-INT-05 | None: logged only (`guardrail_log` event), the command runs |
 | U-FMT-01 | `REJECTED [U-FMT-01]: empty command. Send one bash command.` |
 | U-FMT-02 | `REJECTED [U-FMT-02]: command is {n} characters (limit 8000). Write long content to a file with a heredoc across several steps.` |
 | U-FMT-03 | `REJECTED [U-FMT-03]: heredoc '{delim}' is never closed. End it with a line containing only {delim}.` |

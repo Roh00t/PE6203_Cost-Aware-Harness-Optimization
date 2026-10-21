@@ -117,11 +117,8 @@ _RULES = (
     ),
     _Rule(
         "U-INT-04",
-        tuple(re.compile(pattern, _FLAGS) for pattern in (
-            r"\bsudo\b(?!\s+-n\b)",
-            r"\b(?:ssh|scp)\b(?![^;&|]*BatchMode=yes)",
-        )),
-        "BLOCKED [U-INT-04]: this would wait for a password. Use 'sudo -n …' (fails fast without rights) or '-o BatchMode=yes'.",
+        (re.compile(r"\b(?:ssh|scp)\b(?![^;&|]*BatchMode=yes)", _FLAGS),),
+        "BLOCKED [U-INT-04]: this would wait for a password. Use '-o BatchMode=yes' so it fails fast instead.",
         c2_only=True,
     ),
     _Rule(
@@ -146,6 +143,15 @@ _RULES = (
         "U-FMT-04",
         (),
         "REJECTED [U-FMT-04]: submit on its own: echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT",
+        c2_only=True,
+    ),
+    # Logged, not blocked: task containers grant passwordless sudo, so blocking it rejected
+    # correct commands (dev review 2026-10-21, task 106). Last, so it never hides a block.
+    _Rule(
+        "U-INT-05",
+        (re.compile(r"\bsudo\b(?!\s+-n\b)", _FLAGS),),
+        "",
+        action="log",
         c2_only=True,
     ),
 )
