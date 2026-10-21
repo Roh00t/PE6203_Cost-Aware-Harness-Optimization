@@ -90,6 +90,13 @@ def test_c2_advertises_four_tools_and_uploads_generic_helper(tmp_path: Path):
         "edit_file",
         "search",
     ]
+    # Not uploaded at construction: factories run on the event-loop thread (issue #2).
+    assert services.environment.helper_source is None
+    (tmp_path / "notes.txt").write_text("alpha\n", encoding="utf-8")
+    plugin.execute_tool(
+        {"tool": "read_file", "arguments": {"path": "notes.txt"}},
+        state(components={"C2"}),
+    )
     assert services.environment.helper_source is not None
     assert "MAX_HITS = 100" in services.environment.helper_source
 

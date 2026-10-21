@@ -232,8 +232,15 @@ class ToolInterface(Hook):
     tools = _TOOLS
 
     def __init__(self, services: Services):
+        # No container calls here: factories run on Harbor's event-loop thread, where the
+        # adapter's blocking bridge would deadlock (issue #2). Upload on first tool use instead.
         self.environment = services.environment
-        self.environment.write_text(HELPER_PATH, _HELPER_SOURCE)
+        self._helper_ready = False
+
+    def _ensure_helper(self) -> None:
+        if not self._helper_ready:
+            self.environment.write_text(HELPER_PATH, _HELPER_SOURCE)
+            self._helper_ready = True
 
     def on_missing_tool_call(self, response: dict, state: RunState) -> str:
         choices = response.get("choices")
@@ -303,6 +310,7 @@ class ToolInterface(Hook):
                 "extra": {"origin": "harness", "harness_chars": len(message)},
             }
 
+        self._ensure_helper()
         payload = base64.b64encode(
             json.dumps({"tool": name, "arguments": clean}, ensure_ascii=False).encode("utf-8")
         ).decode("ascii")

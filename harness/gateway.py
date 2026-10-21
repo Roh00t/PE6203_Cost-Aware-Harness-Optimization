@@ -14,6 +14,10 @@ from minisweagent.models.utils.actions_toolcall import BASH_TOOL
 from harness.components.budget import stop_cost
 from harness.telemetry import origin_counts
 
+# Per-request HTTP timeout. An infrastructure bound, not a decoding setting: without it LiteLLM
+# waits up to 6000 s, and a trial cancelled by Harbor's timeout keeps its worker thread (and the
+# process) alive until the in-flight request returns.
+REQUEST_TIMEOUT_S = 600
 
 class UsageError(RuntimeError):
     """Unknown cost is an infrastructure error, never silently free."""
@@ -85,6 +89,7 @@ class OpenRouterGateway(LitellmModel):
             tools=self.tools_for_request(),
             **deepcopy(self.config.model_kwargs),
             num_retries=0,
+            timeout=REQUEST_TIMEOUT_S,
         )
 
     def _parse_actions(self, response):

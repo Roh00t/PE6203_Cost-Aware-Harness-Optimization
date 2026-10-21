@@ -15,6 +15,8 @@ Guidance for people and coding assistants working on this repository.
 
 **`// DO NOT MODIFY CORE FILES - TEST SUITE IN PROGRESS`.** Until Rohit lifts this, do not edit, refactor or reformat `harness/**`, `scripts/*.py`, `scripts/harbor_run.sh`, `tests/**`, `configs/**` or `agent_instructions.md`. New work goes in **new files on your own branch**. Isha is running the test suite against these exact files.
 
+**Freeze exception, 2026-10-21 (Rohit), branch `rohit/fix-c2-deadlock`, for issue #2 only:** H0+C2 trials hung forever because C2 uploaded its helper from its constructor, which runs on Harbor's event-loop thread, where `HarborEnvironment._wait` deadlocks (and Harbor's agent timeout can't fire). Changed: `harness/components/tools.py` (upload on first tool use), `harness/environment.py` (`_wait` raises instead of deadlocking on the loop thread), `harness/gateway.py` (600 s per-request timeout), `tests/test_components.py` (one assertion now expects the deferred upload), new `tests/test_c2_deadlock_regression.py`. Offline: 103 passed. Nothing else is unfrozen.
+
 Verified baseline, 2026-10-20, `main` at `8ad8d05` (PR #1 merged):
 - `pytest -q tests`: 99 passed.
 - `check_harness.py`: OK for V and V-E.

@@ -39,6 +39,18 @@ class HarborEnvironment:
         if self.stop_event.is_set():
             coroutine.close()
             raise RuntimeError("Trial cancelled")
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+        if running is self.loop:
+            # Blocking here would stop the loop that must run the coroutine: a silent hang
+            # that also disables Harbor's agent timeout (issue #2). Fail loudly instead.
+            coroutine.close()
+            raise RuntimeError(
+                "container call on the event-loop thread would deadlock; "
+                "call it from the agent worker thread"
+            )
         future = asyncio.run_coroutine_threadsafe(coroutine, self.loop)
         with self.lock:
             self.pending.add(future)
