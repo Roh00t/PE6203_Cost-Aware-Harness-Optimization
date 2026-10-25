@@ -1,7 +1,7 @@
 # Guardrails
 
 **PE6203 CA2 · Group Project 5** · Safety and execution boundaries for the cost-aware harness.
-Status: design baseline, 2026-10-09. §8 will be completed from the AI Cybersecurity and Agentic AI lecture material.
+Status: frozen with `harness-v1` (`6c87103`, 2026-10-21) after the dev false-positive review (§7). §8 maps the controls to the course frameworks.
 
 This document defines what the harness blocks, limits and logs, and the exact text the model sees when that happens. Architecture context: [`system_architecture.md`](system_architecture.md). Config IDs (B0, E, H0, Ck, V) are defined in [§2 of that document](system_architecture.md#2-configurations).
 
@@ -181,17 +181,65 @@ Guardrails can lower success as well as protect it, so they are measured like an
 - **Dev review before freeze.** All `block` events from dev runs are reviewed by hand. A rule with any false positive on a legitimate command is narrowed. The rule table is then frozen together with the harness version used for eval.
 - **Report.** Trigger counts per rule per configuration. Blocks that preceded a failed trial are checked during failure classification ([architecture §10.4](system_architecture.md#104-analysis)), so a guardrail-caused failure is labelled as a harness-level failure, not hidden.
 
+### 7.1 Dev review result (2026-10-21)
+
+Reviewed: every `guardrail_block` event in the dev logs, i.e. Abin's C1/C3 runs (`results/dev/c1-c3-dev`, 19 trials, G-rules only) and Rohit's live smoke runs of C2, C4, C5, V and V-E on dev tasks 020 and 106 (11 trials).
+
+| Rule | Blocks | Legitimate? | Outcome |
+|---|---|---|---|
+| U-INT-04 (`sudo` part) | 3: H0+C2, V and V-E on task 106, each on `sudo useradd -m -d /home/test1 … && … \| sudo chpasswd` | **Yes: false positive.** Task containers grant the agent passwordless sudo, so the command could never wait for a password. After the block, H0+C2 and V scored 0 on a task that H0+C4 and H0+C5 (no U-rules) solved; V-E recovered and solved it | **Narrowed.** `sudo` without `-n` moved to the log-only rule U-INT-05 (checked last, so it never hides a block). U-INT-04 keeps blocking `ssh`/`scp` without `BatchMode`. Code, §3.2–3.3 and unit tests changed together (104 tests pass) |
+| All other rules | 0 | n/a | Unchanged |
+
+The rule table above is frozen with `harness-v1`. **Eval-phase review:** after the eval runs, count `guardrail_block` and `guardrail_log` events per rule per configuration (`grep -h '"guardrail_' jobs/<run>/*/*/*/agent/events.jsonl`), and check every block in a failed trial during failure classification. Report "0 blocks" explicitly where none occur. Because U-INT-05 now lets `sudo` through, a trial that hangs on a sudo password would surface as a `command_timeout` event (30 s, or 180 s with C3), not a hang.
+
 ---
 
 ## 8. Mapping to Course Frameworks
 
-*To be completed from the AI Cybersecurity and Agentic AI lecture slides.* Provisional mapping to the OWASP Top 10 for LLM Applications (2025):
+Sources: the Agentic AI lectures in `docs/` (Week 8 Tools, Week 10 Harness, Week 12 Industry Applications), which cite the OWASP Top 10 for LLM Applications (2025), Simon Willison's lethal trifecta (2025), Meta's Agents Rule of Two (2025) and the NIST AI RMF. The separate AI Cybersecurity slides are not in the repository; add any framework they introduce to the tables below.
+
+### 8.1 Lethal trifecta and the Rule of Two (Week 12)
+
+The lethal trifecta is **untrusted content + private data + a way to send data out**; together they make a data-theft path. The Rule of Two says an agent should not autonomously hold all three in one session.
+
+| Leg | Our harness (H0 … V, V-E) | Stock baselines (B0, E) |
+|---|---|---|
+| Untrusted content | **Present:** live websites, task files, command output (§1) | Present |
+| Private data | **Removed from the execution context:** the API key stays on the host; the container gets an env allow-list with no secrets (§2.1), checked by a unit test | **Present:** stock mini-swe-agent passes the key into the container |
+| External communication | **Present:** tasks need internet (`allow_internet = true`), so egress can't be closed (§2.4) | Present |
+
+So our harness satisfies the Rule of Two by removing the private-data leg, the leg it controls. B0/E hold all three; as the brief requires an unmodified default harness, this is an accepted residual risk bounded by credit-capped keys and rotation (§5). As the lecture stresses, prompt instructions alone are insufficient: our "observations are data" prompt line (§2.3) is a backstop, and every control here is enforced in code.
+
+### 8.2 Tool safety: blast radius, permissions, sandboxing (Week 8)
+
+| Lecture principle | How the harness applies it |
+|---|---|
+| Tier actions by blast radius: auto-allow reads, confirm writes, block the truly dangerous | Ordinary commands run; environment-destroying commands are blocked (G-DST-01…05); grader access is blocked (G-INT-01); risky-but-legitimate patterns are logged, not blocked (G-SEC-01, U-INT-05) |
+| Human-in-the-loop before irreversible actions; "the runtime asks permission, the model never skips the gate" | The irreversible actions in this project are spending money and producing recorded results, so the gates sit there: `CONFIRM_PAID=1` for any paid run and `CONFIRM_EVAL=1` for the eval split, enforced by `harbor_run.sh`, not by the model (§4). Inside a trial, everything is undone by deleting the container |
+| Sandbox code execution with CPU, memory, network, filesystem limits | Every trial runs in its own Docker container, built from the task image and deleted afterwards (`--delete`); task-defined CPU/memory limits; per-command timeouts (30 s, 180 s with C3); 1 MB output cap (§4) |
+| Least privilege, no standing admin rights | Applied at the container boundary: no secrets, no host access, no Docker socket for model commands (§5). Inside the container the agent has passwordless sudo because many tasks need it; that is why `sudo` is logged (U-INT-05) rather than blocked, and why the boundary, not in-container permissions, is the control |
+| Assume calls may be wrong or adversarial; design for failure | §3 rules check every command before it runs; C2 validates tool arguments against schemas; C4 stops identical failing commands from repeating |
+
+### 8.3 Harness duties (Week 10)
+
+| Lecture principle | How the harness applies it |
+|---|---|
+| "Model output is untrusted input. Validate it before you execute it." | The guardrail check runs before every execution (§3); C2 validates tool calls and returns a precise error with a valid example |
+| Budgets and stopping: when a budget runs out, return a reason, never report success | C3's step and dollar caps end the trial with `LimitsExceeded` / `CostCapExceeded`, never `Submitted`; per-job ledger cap; wall-clock limit (§4) |
+| Classify errors before retrying: transient → bounded retry with backoff; malformed → repair, then retry; permanent/fatal → stop and report | API 429/5xx/timeout: 3 retries with 2/4/8 s backoff, then an infrastructure error that is rerun, never scored (§4). Malformed responses: format-error feedback (C2 wording), at most 3 (5 with C2) in a row. Repeated identical failures: C4 refuses the third identical failing command and asks for a different approach |
+| Observability: every step logged and traceable | `calls.jsonl` (every HTTP attempt, tokens, cost, provider, purpose), `events.jsonl` (every guardrail, budget and recovery event), and the full trajectory; append-only and flushed per event so killed trials keep their data |
+
+### 8.4 OWASP Top 10 for LLM Applications (2025)
 
 | OWASP 2025 | Relevance here | Controls in this document |
 |---|---|---|
-| LLM01 Prompt Injection | Live websites and task files flow into the model's context | §2 (data framing, no secrets in container), G-SEC-01 logging |
+| LLM01 Prompt Injection | Live websites and task files flow into the model's context | No secrets in the container (§2.1, §8.1), container-only execution (§2.2), data framing (§2.3), G-SEC-01 logs secret probing |
 | LLM02 Sensitive Information Disclosure | API key exposure | §2.1, §5 |
 | LLM03 Supply Chain | Pinned Harbor, mini-swe-agent and images; B0's `curl \| sh` installer | §5 |
-| LLM05 Improper Output Handling | Model output executed as shell | §2.2 (container-only execution), §3 rules |
-| LLM06 Excessive Agency | Root-level destructive commands, grader access | G-DST-*, G-INT-01 |
-| LLM10 Unbounded Consumption | Loops, context growth, crash-restart spending | §4 caps, C1/C3/C4 in the architecture |
+| LLM05 Improper Output Handling | Model output executed as shell | §2.2, §3 rules, C2 argument validation |
+| LLM06 Excessive Agency | Root-level destructive commands, grader access, too much autonomy | G-DST-*, G-INT-01, container boundary (§8.2), paid/eval gates |
+| LLM10 Unbounded Consumption | Loops, context growth, crash-restart spending | §4 caps, C1 context limits, C3 budget, C4 repeat intercept, no `restart:` policy |
+
+### 8.5 Governance (Week 12, NIST AI RMF)
+
+"Guardrails stop a bad action in the moment; governance keeps the deployment accountable." Our governance controls: a named owner for freezes and paid runs (Rohit, `CLAUDE.md`); rules, configs and models frozen and versioned with the `harness-v1` tag; a recorded review that narrowed one rule on evidence (§7.1); append-only logs committed under `results/` behind every reported number; per-person keys with credit limits, rotated after the final run; and a kill switch at three levels (job ledger, key credit limit, no auto-restart).
