@@ -34,6 +34,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MINI_SWE_AGENT_VERSION = "2.4.6"
+# Harbor installs stock mini-swe-agent inside each task container with an unpinned
+# `uv tool install`, so its dependencies float. A litellm release after the 2026-10-13 dev pilot
+# imports `mcp` without installing it, and B0/E crashed on their first model call. Resolving as
+# of the pilot date restores the environment B0/E were validated in; agent settings stay stock.
+STOCK_EXCLUDE_NEWER = "2026-10-13"
 HARNESS_AGENT = "harness.agent:CostAwareAgent"
 
 STOCK = {"B0": "configs/models/base.yaml", "E": "configs/models/expensive.yaml"}
@@ -146,7 +151,8 @@ def build_command(config: Config, split: str, task: str, run_name: str,
     cmd += ["--", "--job-name", f"{run_name}/{config.slug}"]
     if config.kind == "stock":
         cmd += ["--agent", "mini-swe-agent", "--model", model_name(config.path),
-                "--ak", f"version={MINI_SWE_AGENT_VERSION}", "--ak", f"config_file={config.path}"]
+                "--ak", f"version={MINI_SWE_AGENT_VERSION}", "--ak", f"config_file={config.path}",
+                "--ae", f"UV_EXCLUDE_NEWER={STOCK_EXCLUDE_NEWER}"]
     else:
         cmd += ["--agent-import-path", HARNESS_AGENT, "--ak", f"config_path={config.path}"]
         if job_budget_usd is not None:

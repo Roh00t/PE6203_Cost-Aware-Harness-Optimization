@@ -105,6 +105,15 @@ def test_harness_command_carries_config_and_shared_ledger():
     assert "config_path=configs/harness/V.yaml" in cmd
     assert "job_budget_usd=0.5" in cmd
     assert f"job_ledger_path={ROOT / 'jobs' / 'run1' / 'ledger.sqlite'}" in cmd
+    assert "--ae" not in cmd  # the harness runs on the host from uv.lock
+
+
+def test_stock_baselines_install_the_pilot_dependency_snapshot():
+    # B0/E install mini-swe-agent inside the container; unpinned resolution broke them.
+    for config in runner.resolve_configs("B0,E"):
+        cmd = runner.build_command(config, "eval", "t1", "run1", None, prune_cache=False)
+        env = cmd[cmd.index("--ae") + 1]
+        assert env == f"UV_EXCLUDE_NEWER={runner.STOCK_EXCLUDE_NEWER}" == "UV_EXCLUDE_NEWER=2026-10-13"
 
 
 def test_preflight_blocks_full_variants_until_plugins_exist():
