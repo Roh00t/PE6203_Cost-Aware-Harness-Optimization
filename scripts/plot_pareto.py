@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """Plot analysis.json, explicitly separating partial observations and exact costs.
 
-Only complete, exact-cost configurations on the full requested task set are
-eligible for the frontier. Incomplete-cost observations have hollow markers
+By default only complete, exact-cost configurations on the full requested task set
+are eligible for the frontier. Incomplete-cost observations have hollow markers
 and rightward arrows: their horizontal coordinates are lower bounds.
+
+--lower-bound-policy include also admits configurations whose only defect is a
+lower-bound cost (some calls with unknown usage, e.g. provider rate-limit
+rejections). They stay drawn and labelled as lower bounds, and the manifest
+records the policy and each point's unknown-call count. Coverage gaps still exclude.
 """
 import argparse
 import json
@@ -20,7 +25,12 @@ def finite_number(value, label: str) -> float:
     return number
 
 
-def prepare_points(data: dict) -> tuple[list[dict], list[dict]]:
+LOWER_BOUND_POLICIES = ("exclude", "include")
+
+
+def prepare_points(data: dict, lower_bound_policy: str = "exclude") -> tuple[list[dict], list[dict]]:
+    if lower_bound_policy not in LOWER_BOUND_POLICIES:
+        raise ValueError(f"Unknown lower-bound policy: {lower_bound_policy}")
     expected = set(data["metadata"]["expected_task_ids"])
     if not expected:
         raise ValueError("Expected task list is empty")
@@ -58,7 +68,7 @@ def prepare_points(data: dict) -> tuple[list[dict], list[dict]]:
                 and set(row["attempted_task_ids"]) == expected)
         single_trial = row["n_active_trials"] == attempts
         reasons = []
-        if lower_bound:
+        if lower_bound and lower_bound_policy == "exclude":
             reasons.append("incomplete_cost")
         if not full:
             reasons.append("incomplete_reward_coverage")
@@ -97,13 +107,18 @@ def frontier(points: list[dict]) -> list[str]:
     return result
 
 
-def render(data: dict, output: Path) -> dict:
-    points, skipped = prepare_points(data)
+def render(data: dict, output: Path, lower_bound_policy: str = "exclude") -> dict:
+    points, skipped = prepare_points(data, lower_bound_policy)
     frontier_ids = frontier(points)
     split = data["metadata"]["split"]
     notes = []
     if any(p["cost_is_lower_bound"] for p in points):
         notes.append("Hollow markers with arrows show known-cost lower bounds, not exact costs.")
+        if lower_bound_policy == "include":
+            counts = ", ".join(f"{p['config_id']} {p['n_unknown_calls']}" for p in points
+                               if p["cost_is_lower_bound"])
+            notes.append("Lower-bound costs are admitted to the frontier (policy: include). "
+                         f"Calls with unknown usage: {counts}.")
     if len({tuple(sorted(r["scored_task_ids"])) for r in data["summary"] if r["n_scored_tasks"]}) > 1:
         notes.append("Scored task sets differ; observed reward means are not directly comparable.")
     if not frontier_ids:
@@ -130,7 +145,8 @@ def render(data: dict, output: Path) -> dict:
     for i, point in enumerate(points):
         x, y = point["mean_cost_per_attempted_task_usd"], point["mean_reward"]
         color = colors(i % 10)
-        ax.scatter([x], [y], s=90, facecolors=color if point["frontier_eligible"] else "white",
+        exact = point["frontier_eligible"] and not point["cost_is_lower_bound"]
+        ax.scatter([x], [y], s=90, facecolors=color if exact else "white",
                    edgecolors=[color], linewidths=1.8, zorder=3)
         if point["cost_is_lower_bound"]:
             ax.annotate("", xy=(min(x + xmax * 0.075, xmax * 0.98), y), xytext=(x, y),
@@ -165,6 +181,7 @@ def render(data: dict, output: Path) -> dict:
     plt.close(fig)
     manifest = {"split": split, "points": points, "skipped": skipped,
                 "frontier_config_ids": frontier_ids, "notes": notes,
+                "lower_bound_policy": lower_bound_policy,
                 "cost_scope": "Agent inference only; see analysis.json for archived-attempt and verifier exclusions"}
     stem.with_suffix(".json").write_text(json.dumps(manifest, indent=2, allow_nan=False) + "\n")
     return manifest
@@ -174,9 +191,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, required=True, help="analysis.json produced by analyze.py")
     parser.add_argument("--output", type=Path, required=True, help="Output filename stem (PNG, SVG and JSON)")
+    parser.add_argument("--lower-bound-policy", choices=LOWER_BOUND_POLICIES, default="exclude",
+                        help="include: admit lower-bound-cost configurations to the frontier, labelled as such")
     args = parser.parse_args()
     try:
-        result = render(json.loads(args.input.read_text()), args.output)
+        result = render(json.loads(args.input.read_text()), args.output, args.lower_bound_policy)
     except ImportError:
         parser.exit(1, "Plotting requires matplotlib. Install it with uv add matplotlib==3.10.8\n")
     except (ValueError, KeyError, OSError, TypeError) as error:

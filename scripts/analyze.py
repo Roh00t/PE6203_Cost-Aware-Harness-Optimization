@@ -64,6 +64,7 @@ def load_trial(path: Path, table: dict, families: dict, expected: set[str],
         raise ValueError(f"Task outside requested split: {task} in {path}")
     config = identify_config(path, data, override)
     metadata = ((data.get("agent_result") or {}).get("metadata") or {})
+    archived = bool(ASIDE.search(str(path)))
     log = path.parent / "agent/calls.jsonl"
     source = "calls.jsonl"
     if not log.is_file():
@@ -73,26 +74,35 @@ def load_trial(path: Path, table: dict, families: dict, expected: set[str],
     if not model:
         model = "openai/gpt-oss-120b" if config in {"E", "V-E"} else "openai/gpt-oss-20b"
     model = model.removeprefix("openrouter/")
+    # A setup failure may have no call log. Metadata cannot independently
+    # prove zero spend, or reconstruct a missing HTTP-attempt count.
+    unlogged = {"known_cost_table_usd": metadata.get("known_cost_table_usd"),
+                "cost_table_usd": None, "usage_complete": False,
+                "n_unknown_calls": None, "calls": None,
+                "harness_calls_cost_usd": None,
+                "harness_injected_cost_usd_estimate": None,
+                "overhead_estimate_complete": False}
     if log.is_file():
-        report = summarize(log, model=model, provider=table["models"][model]["provider"],
-                           pricing=pricing, result_path=path)
+        try:
+            report = summarize(log, model=model, provider=table["models"][model]["provider"],
+                               pricing=pricing, result_path=path)
+        except ValueError as error:
+            # An archived attempt (set aside by harbor_run.sh and rerun) that crashed before its
+            # first model call has a log with no calls. It is never scored; record it like a
+            # missing log instead of aborting. Active trials keep the strict check.
+            if not (archived and str(error).startswith("No model calls found")):
+                raise
+            source = "archived_no_calls"
+            report = unlogged
     else:
-        # A setup failure may have no call log. Metadata cannot independently
-        # prove zero spend, or reconstruct a missing HTTP-attempt count.
         source = "missing_log"
-        report = {"known_cost_table_usd": metadata.get("known_cost_table_usd"),
-                  "cost_table_usd": None, "usage_complete": False,
-                  "n_unknown_calls": None, "calls": None,
-                  "harness_calls_cost_usd": None,
-                  "harness_injected_cost_usd_estimate": None,
-                  "overhead_estimate_complete": False}
+        report = unlogged
     reward = ((data.get("verifier_result") or {}).get("rewards") or {}).get("reward")
     if reward is not None and (type(reward) not in (int, float)
                               or not math.isfinite(reward) or not 0 <= reward <= 1):
         raise ValueError(f"Invalid verifier reward in {path}")
     exception = (data.get("exception_info") or {}).get("exception_type")
     finished = bool(data.get("finished_at"))
-    archived = bool(ASIDE.search(str(path)))
     scored = finished and reward is not None and not exception and not archived
     return {
         "config_id": config, "task": task, "family": families[task]["family"],

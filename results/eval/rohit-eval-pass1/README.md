@@ -21,7 +21,7 @@ Infrastructure failures were rerun with the same command and are **kept** here a
 
 ## Preliminary results
 
-From `scripts/analyze.py` and `scripts/plot_pareto.py` (Ulfa) at `72ecb6f`, run on the current trials only (archived attempts excluded; see the analysis note below). Paired bootstrap over the 40 tasks, 10,000 samples, seed 42. Costs are agent inference at the frozen table prices (`configs/pricing.json`); verifier costs excluded.
+From `scripts/analyze.py` and `scripts/plot_pareto.py` on this whole folder (archived attempts are recorded but never scored). Full tables, `analysis.json` and both Pareto plots: [`results/analysis/eval/rohit-eval-pass1/`](../../analysis/eval/rohit-eval-pass1/). Paired bootstrap over the 40 tasks, 10,000 samples, seed 42. Costs are agent inference at the frozen table prices (`configs/pricing.json`); verifier costs excluded.
 
 | Config | Model | Mean reward | Known cost per task | Cost complete? |
 |---|---|---|---|---|
@@ -42,11 +42,15 @@ From `scripts/analyze.py` and `scripts/plot_pareto.py` (Ulfa) at `72ecb6f`, run 
 
 Reading, with one run per configuration: the full harness on the cheap model (V) is clearly better than the default harness on the same model (B0), and statistically level with the expensive model on the default harness (E) at a lower known cost per task. The harness also helps the stronger model (V-E vs B0). Ties dominate because most tasks are failed by every configuration.
 
-**Open before these become final:**
-- **Unknown-cost calls** (2–7 per harness configuration, from provider rate limits) make those costs lower bounds, and `plot_pareto.py` excludes lower-bound points from the frontier, so the frontier currently shows only B0 and E. The team policy for reporting them is still open (`docs/STATUS.md`).
-- **Analysis note:** `analyze.py` stops with "No model calls found" on the 19 archived B0/E attempts (they crashed before any call) because its cost step runs before it filters archived attempts. The numbers above come from a temporary copy without the archived folders; `analyze.py` should treat a zero-call log in an archived attempt like a missing log.
+**Unknown-cost policy (decided 2026-10-26).** H0, V and V-E have 3, 2 and 7 calls with unknown usage, all provider rate-limit rejections (HTTP 429) with no reported cost; their costs are reported as lower bounds. Two Pareto plots are provided: `pareto` (strict: lower-bound points excluded, frontier B0, E) and `pareto_include_lower_bounds` (lower-bound points admitted and labelled; frontier B0, H0, V, E, V-E). Use the second in the report, with its note.
+
+**Family-reweighted** (Office 46, Web 22, System 19, Scientific 17, Multimedia 16 out of 120): B0 0.086, E 0.116, V 0.143, H0 0.145, V-E 0.219. E's successes concentrate in Scientific and Multimedia (0 in Office, Web and System); V scores in all five families, so V is ahead of E once weighted to the full benchmark.
+
+**Harness overhead:** no harness-made model calls ($0). Harness-injected prompt text (status lines, nudges, recovery and gate messages) is estimated at about 17 % of V's and 16 % of V-E's known cost.
+
+**Still open:**
 - **H0 vs B0 parity:** H0 is a little higher than B0 (+0.042, CI includes 0). Check per task before calling it parity (architecture §10.2).
-- Passes 2–3 (the six single-component ablations H0+C0…C5) have not been run.
+- Passes 2–3 (the six single-component ablations H0+C0…C5) have not been run, so `ablations.csv` is empty.
 
 ## Layout
 
