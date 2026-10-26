@@ -1,0 +1,1036 @@
+{
+  "info": {
+    "model_stats": {
+      "instance_cost": 0.0,
+      "api_calls": 10
+    },
+    "config": {
+      "agent": {
+        "system_template": "You are a helpful assistant that can interact with a computer.\n",
+        "instance_template": "Please solve this issue: {{task}}\n\nYou can execute bash commands and edit files to implement the necessary changes.\n\n## Recommended Workflow\n\nThis workflow should be done step-by-step so that you can iterate on your changes and any possible problems.\n\n1. Analyze the codebase by finding and reading relevant files\n2. Create a script to reproduce the issue\n3. Edit the source code to resolve the issue\n4. Verify your fix works by running your script again\n5. Test edge cases to ensure your fix is robust\n6. Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.\n   Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>\n\n## Command Execution Rules\n\nYou are operating in an environment where\n\n1. You issue at least one command\n2. The system executes the command(s) in a subshell\n3. You see the result(s)\n4. You write your next command(s)\n\nEach response should include:\n\n1. **Reasoning text** where you explain your analysis and plan\n2. At least one tool call with your command\n\n**CRITICAL REQUIREMENTS:**\n\n- Your response SHOULD include reasoning text explaining what you're doing\n- Your response MUST include AT LEAST ONE bash tool call\n- Directory or environment variable changes are not persistent. Every action is executed in a new subshell.\n- However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd /path/to/working/dir && ...` or write/load environment variables from files\n- Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.\n  Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>\n\nExample of a CORRECT response:\n<example_response>\nI need to understand the structure of the repository first. Let me check what files are in the current directory to get a better understanding of the codebase.\n\n[Makes bash tool call with {\"command\": \"ls -la\"} as arguments]\n</example_response>\n\n<system_information>\n{{system}} {{release}} {{version}} {{machine}}\n</system_information>\n\n## Useful command examples\n\n### Create a new file:\n\n```bash\ncat <<'EOF' > newfile.py\nimport numpy as np\nhello = \"world\"\nprint(hello)\nEOF\n```\n\n### Edit files with sed:\n\n{%- if system == \"Darwin\" -%}\n<important>\nYou are on MacOS. For all the below examples, you need to use `sed -i ''` instead of `sed -i`.\n</important>\n{%- endif -%}\n\n```bash\n# Replace all occurrences\nsed -i 's/old_string/new_string/g' filename.py\n\n# Replace only first occurrence\nsed -i 's/old_string/new_string/' filename.py\n\n# Replace first occurrence on line 1\nsed -i '1s/old_string/new_string/' filename.py\n\n# Replace all occurrences in lines 1-10\nsed -i '1,10s/old_string/new_string/g' filename.py\n```\n\n### View file content:\n\n```bash\n# View specific lines with numbers\nnl -ba filename.py | sed -n '10,20p'\n```\n\n### Any other command you want to run\n\n```bash\nanything\n```\n",
+        "step_limit": 0,
+        "cost_limit": 0.0,
+        "wall_time_limit_seconds": 0,
+        "max_consecutive_format_errors": 3,
+        "output_path": "/logs/agent/mini-swe-agent.trajectory.json",
+        "mode": "yolo",
+        "whitelist_actions": [],
+        "confirm_exit": false
+      },
+      "agent_type": "minisweagent.agents.interactive.InteractiveAgent",
+      "model": {
+        "model_name": "openrouter/openai/gpt-oss-20b",
+        "model_kwargs": {
+          "drop_params": true,
+          "max_tokens": 8192,
+          "extra_body": {
+            "provider": {
+              "order": [
+                "Darkbloom"
+              ],
+              "allow_fallbacks": false,
+              "require_parameters": true
+            },
+            "reasoning": {
+              "effort": "low"
+            },
+            "usage": {
+              "include": true
+            }
+          }
+        },
+        "litellm_model_registry": null,
+        "set_cache_control": null,
+        "cost_tracking": "ignore_errors",
+        "format_error_template": "{% if finish_reason is defined and (finish_reason == \"length\" or (finish_reason == \"tool_calls\" and not has_tool_calls)) -%}\nYour previous response reached the output token limit (finish_reason={{ finish_reason }}) before you produced a tool call, so it was cut off. Respond more concisely and finish with exactly one bash tool call. If you need to think more, do so briefly.\n{%- else -%}\nTool call error:\n\n<error>\n{{error}}\n</error>\n\nHere is general guidance on how to submit correct toolcalls:\n\nEvery response needs to use the 'bash' tool at least once to execute commands.\n\nCall the bash tool with your command as the argument:\n- Tool: bash\n- Arguments: {\"command\": \"your_command_here\"}\n\nIf you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`\nwithout any other command.\n{%- endif %}\n",
+        "observation_template": "{%- if output.output | length < 10000 -%}\n{\n  \"returncode\": {{ output.returncode }},\n  \"output\": {{ output.output | tojson }}\n  {%- if output.exception_info %}, \"exception_info\": {{ output.exception_info | tojson }}{% endif %}\n}\n{%- else -%}\n{\n  \"returncode\": {{ output.returncode }},\n  \"output_head\": {{ output.output[:5000] | tojson }},\n  \"output_tail\": {{ output.output[-5000:] | tojson }},\n  \"elided_chars\": {{ output.output | length - 10000 }},\n  \"warning\": \"Output too long.\"\n  {%- if output.exception_info %}, \"exception_info\": {{ output.exception_info | tojson }}{% endif %}\n}\n{%- endif -%}\n",
+        "multimodal_regex": ""
+      },
+      "model_type": "minisweagent.models.litellm_model.LitellmModel",
+      "environment": {
+        "cwd": "",
+        "env": {
+          "PAGER": "cat",
+          "MANPAGER": "cat",
+          "LESS": "-R",
+          "PIP_PROGRESS_BAR": "off",
+          "TQDM_DISABLE": "1"
+        },
+        "timeout": 30
+      },
+      "environment_type": "minisweagent.environments.local.LocalEnvironment"
+    },
+    "mini_version": "2.4.6",
+    "exit_status": "RepeatedFormatError",
+    "submission": ""
+  },
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a helpful assistant that can interact with a computer."
+    },
+    {
+      "role": "user",
+      "content": "Please solve this issue: Given `/app/input/building.osm`, `/app/input/weather.epw`, and `/app/input/task_plan.json`, use the installed OpenStudio CLI (`openstudio`) and the bundled EnergyPlus executable to produce a translated IDF, run the simulation, and summarize the annual energy totals.\n\nHere is the workflow I'd like you to follow:\n\n1. Read `/app/input/task_plan.json`.\n2. Use the real OpenStudio CLI to translate `/app/input/building.osm` into `/app/artifacts/generated_building.idf`.\n3. Append the required `Output:Meter` objects in the exact order listed in `/app/input/task_plan.json`, using the reporting frequency listed there.\n4. Run the real EnergyPlus simulator with `/app/input/weather.epw` and write the run directory to `/app/artifacts/energyplus_run`.\n5. Parse `/app/artifacts/energyplus_run/eplusout.mtr` to compute annual totals in kWh for:\n   - electricity\n   - natural gas\n   - fuel oil\n   - total site energy, defined as the sum of those three annual totals\n6. Write `/app/artifacts/simulation_summary.txt` with exactly the following keys in exactly this order:\n   - `bldg_id=<int>`\n   - `translated_version=<string>`\n   - `building_name=<string>`\n   - `weather_file=<string>`\n   - `row_count=<int>`\n   - `annual_electricity_kwh=<float>`\n   - `annual_natural_gas_kwh=<float>`\n   - `annual_fuel_oil_kwh=<float>`\n   - `annual_site_energy_kwh=<float>`\n\nUse the values recorded in `/app/input/task_plan.json` for `bldg_id`, `weather_file`, and `row_count`. The verifier holds the ground-truth annual totals separately, so the inputs exposed under `/app/input` do not contain the reference answer.\n\nPlease keep the following constraints in mind:\n\n- Use the real `openstudio` CLI and the real EnergyPlus executable. Avoid fake, hand-written, or placeholder simulation outputs.\n- Keep all files in `/app/input/*` unchanged.\n- Ensure `/app/artifacts/generated_building.idf`, `/app/artifacts/simulation_summary.txt`, `/app/artifacts/energyplus_run/eplusout.mtr`, `/app/artifacts/energyplus_run/eplusout.sql`, and `/app/artifacts/energyplus_run/eplustbl.htm` all exist and are non-empty.\n- Store the final outputs under `/app/artifacts` so they are preserved as task artifacts.\n\n\nYou can execute bash commands and edit files to implement the necessary changes.\n\n## Recommended Workflow\n\nThis workflow should be done step-by-step so that you can iterate on your changes and any possible problems.\n\n1. Analyze the codebase by finding and reading relevant files\n2. Create a script to reproduce the issue\n3. Edit the source code to resolve the issue\n4. Verify your fix works by running your script again\n5. Test edge cases to ensure your fix is robust\n6. Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.\n   Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>\n\n## Command Execution Rules\n\nYou are operating in an environment where\n\n1. You issue at least one command\n2. The system executes the command(s) in a subshell\n3. You see the result(s)\n4. You write your next command(s)\n\nEach response should include:\n\n1. **Reasoning text** where you explain your analysis and plan\n2. At least one tool call with your command\n\n**CRITICAL REQUIREMENTS:**\n\n- Your response SHOULD include reasoning text explaining what you're doing\n- Your response MUST include AT LEAST ONE bash tool call\n- Directory or environment variable changes are not persistent. Every action is executed in a new subshell.\n- However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd /path/to/working/dir && ...` or write/load environment variables from files\n- Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.\n  Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>\n\nExample of a CORRECT response:\n<example_response>\nI need to understand the structure of the repository first. Let me check what files are in the current directory to get a better understanding of the codebase.\n\n[Makes bash tool call with {\"command\": \"ls -la\"} as arguments]\n</example_response>\n\n<system_information>\nLinux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64\n</system_information>\n\n## Useful command examples\n\n### Create a new file:\n\n```bash\ncat <<'EOF' > newfile.py\nimport numpy as np\nhello = \"world\"\nprint(hello)\nEOF\n```\n\n### Edit files with sed:```bash\n# Replace all occurrences\nsed -i 's/old_string/new_string/g' filename.py\n\n# Replace only first occurrence\nsed -i 's/old_string/new_string/' filename.py\n\n# Replace first occurrence on line 1\nsed -i '1s/old_string/new_string/' filename.py\n\n# Replace all occurrences in lines 1-10\nsed -i '1,10s/old_string/new_string/g' filename.py\n```\n\n### View file content:\n\n```bash\n# View specific lines with numbers\nnl -ba filename.py | sed -n '10,20p'\n```\n\n### Any other command you want to run\n\n```bash\nanything\n```"
+    },
+    {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "index": 0,
+          "function": {
+            "arguments": "{\"command\":\"ls -R /app/input\"}",
+            "name": "bash"
+          },
+          "id": "call_16463F17485846F5849DDDAA",
+          "type": "function"
+        }
+      ],
+      "function_call": null,
+      "reasoning_content": "We need to run openstudio translate and EnergyPlus. Let's list files.",
+      "provider_specific_fields": {
+        "reasoning_details": [
+          {
+            "type": "reasoning.text",
+            "text": "We need to run openstudio translate and EnergyPlus. Let's list files.",
+            "format": "unknown",
+            "index": 0
+          }
+        ],
+        "reasoning": "We need to run openstudio translate and EnergyPlus. Let's list files.",
+        "refusal": null
+      },
+      "extra": {
+        "actions": [
+          {
+            "command": "ls -R /app/input",
+            "tool_call_id": "call_16463F17485846F5849DDDAA"
+          }
+        ],
+        "response": {
+          "id": "gen-1792946555-TldQaY3xoVDrODuUnEdP",
+          "created": 1792946555,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "tool_calls",
+              "index": 0,
+              "message": {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "index": 0,
+                    "function": {
+                      "arguments": "{\"command\":\"ls -R /app/input\"}",
+                      "name": "bash"
+                    },
+                    "id": "call_16463F17485846F5849DDDAA",
+                    "type": "function"
+                  }
+                ],
+                "function_call": null,
+                "reasoning_content": "We need to run openstudio translate and EnergyPlus. Let's list files.",
+                "provider_specific_fields": {
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "We need to run openstudio translate and EnergyPlus. Let's list files.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ],
+                  "reasoning": "We need to run openstudio translate and EnergyPlus. Let's list files.",
+                  "refusal": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "tool_calls"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 44,
+            "prompt_tokens": 1349,
+            "total_tokens": 1393,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 15,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 2.8242e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 2.8242e-05,
+              "upstream_inference_prompt_cost": 2.4282e-05,
+              "upstream_inference_completions_cost": 3.96e-06
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        },
+        "cost": 0.0,
+        "timestamp": 1792946557.9769685
+      }
+    },
+    {
+      "content": "{\n  \"returncode\": 0,\n  \"output\": \"/app/input:\\nbuilding.osm\\ntask_plan.json\\nweather.epw\\n\"\n}",
+      "extra": {
+        "raw_output": "/app/input:\nbuilding.osm\ntask_plan.json\nweather.epw\n",
+        "returncode": 0,
+        "timestamp": 1792946557.9842086,
+        "exception_info": ""
+      },
+      "tool_call_id": "call_16463F17485846F5849DDDAA",
+      "role": "tool"
+    },
+    {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "index": 0,
+          "function": {
+            "arguments": "{\"command\":\"openstudio --version\"}",
+            "name": "bash"
+          },
+          "id": "call_2DDE1E282EB24CA39B523F0A",
+          "type": "function"
+        }
+      ],
+      "function_call": null,
+      "reasoning_content": "OpenStudio CLI likely available as openstudio. Let's translate.",
+      "provider_specific_fields": {
+        "reasoning_details": [
+          {
+            "type": "reasoning.text",
+            "text": "OpenStudio CLI likely available as openstudio. Let's translate.",
+            "format": "unknown",
+            "index": 0
+          }
+        ],
+        "reasoning": "OpenStudio CLI likely available as openstudio. Let's translate.",
+        "refusal": null
+      },
+      "extra": {
+        "actions": [
+          {
+            "command": "openstudio --version",
+            "tool_call_id": "call_2DDE1E282EB24CA39B523F0A"
+          }
+        ],
+        "response": {
+          "id": "gen-1792946558-tvhelsXdCEpYB27DFPjX",
+          "created": 1792946558,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "tool_calls",
+              "index": 0,
+              "message": {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "index": 0,
+                    "function": {
+                      "arguments": "{\"command\":\"openstudio --version\"}",
+                      "name": "bash"
+                    },
+                    "id": "call_2DDE1E282EB24CA39B523F0A",
+                    "type": "function"
+                  }
+                ],
+                "function_call": null,
+                "reasoning_content": "OpenStudio CLI likely available as openstudio. Let's translate.",
+                "provider_specific_fields": {
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "OpenStudio CLI likely available as openstudio. Let's translate.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ],
+                  "reasoning": "OpenStudio CLI likely available as openstudio. Let's translate.",
+                  "refusal": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "tool_calls"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 38,
+            "prompt_tokens": 1448,
+            "total_tokens": 1486,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 12,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 2.9484e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 2.9484e-05,
+              "upstream_inference_prompt_cost": 2.6064e-05,
+              "upstream_inference_completions_cost": 3.42e-06
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        },
+        "cost": 0.0,
+        "timestamp": 1792946560.638571
+      }
+    },
+    {
+      "content": "{\n  \"returncode\": 0,\n  \"output\": \"3.10.0+86d7e215a1\\n\"\n}",
+      "extra": {
+        "raw_output": "3.10.0+86d7e215a1\n",
+        "returncode": 0,
+        "timestamp": 1792946560.6769524,
+        "exception_info": ""
+      },
+      "tool_call_id": "call_2DDE1E282EB24CA39B523F0A",
+      "role": "tool"
+    },
+    {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "index": 0,
+          "function": {
+            "arguments": "{\"command\":\"openstudio translate /app/input/building.osm /app/artifacts/generated_building.idf\"}",
+            "name": "bash"
+          },
+          "id": "call_F492981C13934182A608AD68",
+          "type": "function"
+        }
+      ],
+      "function_call": null,
+      "reasoning_content": "Translate building.osm to idf.",
+      "provider_specific_fields": {
+        "reasoning_details": [
+          {
+            "type": "reasoning.text",
+            "text": "Translate building.osm to idf.",
+            "format": "unknown",
+            "index": 0
+          }
+        ],
+        "reasoning": "Translate building.osm to idf.",
+        "refusal": null
+      },
+      "extra": {
+        "actions": [
+          {
+            "command": "openstudio translate /app/input/building.osm /app/artifacts/generated_building.idf",
+            "tool_call_id": "call_F492981C13934182A608AD68"
+          }
+        ],
+        "response": {
+          "id": "gen-1792946560-2NaeOC7WEazvU7NIk52s",
+          "created": 1792946560,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "tool_calls",
+              "index": 0,
+              "message": {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "index": 0,
+                    "function": {
+                      "arguments": "{\"command\":\"openstudio translate /app/input/building.osm /app/artifacts/generated_building.idf\"}",
+                      "name": "bash"
+                    },
+                    "id": "call_F492981C13934182A608AD68",
+                    "type": "function"
+                  }
+                ],
+                "function_call": null,
+                "reasoning_content": "Translate building.osm to idf.",
+                "provider_specific_fields": {
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "Translate building.osm to idf.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ],
+                  "reasoning": "Translate building.osm to idf.",
+                  "refusal": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "tool_calls"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 49,
+            "prompt_tokens": 1534,
+            "total_tokens": 1583,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 8,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 1024,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 2.2806e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 2.2806e-05,
+              "upstream_inference_prompt_cost": 1.8396e-05,
+              "upstream_inference_completions_cost": 4.41e-06
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        },
+        "cost": 0.0,
+        "timestamp": 1792946562.6848297
+      }
+    },
+    {
+      "content": "{\n  \"returncode\": 109,\n  \"output\": \"The following arguments were not expected: /app/artifacts/generated_building.idf /app/input/building.osm translate\\nRun with --help for more information.\\n\"\n}",
+      "extra": {
+        "raw_output": "The following arguments were not expected: /app/artifacts/generated_building.idf /app/input/building.osm translate\nRun with --help for more information.\n",
+        "returncode": 109,
+        "timestamp": 1792946562.7249963,
+        "exception_info": ""
+      },
+      "tool_call_id": "call_F492981C13934182A608AD68",
+      "role": "tool"
+    },
+    {
+      "role": "user",
+      "content": "Tool call error:\n\n<error>\nNo tool calls found in the response. Every response MUST include at least one tool call.\n</error>\n\nHere is general guidance on how to submit correct toolcalls:\n\nEvery response needs to use the 'bash' tool at least once to execute commands.\n\nCall the bash tool with your command as the argument:\n- Tool: bash\n- Arguments: {\"command\": \"your_command_here\"}\n\nIf you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`\nwithout any other command.",
+      "extra": {
+        "interrupt_type": "FormatError",
+        "cost": 0.0,
+        "response": {
+          "id": "gen-1792946562-bpsrSsP8EUigPRFBkjho",
+          "created": 1792946562,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "reasoning_content": "OpenStudio CLI usage: openstudio translate <input> <output>. Maybe order is openstudio translate input output. Let's check help.",
+                "provider_specific_fields": {
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "OpenStudio CLI usage: openstudio translate <input> <output>. Maybe order is openstudio translate input output. Let's check help.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ],
+                  "reasoning": "OpenStudio CLI usage: openstudio translate <input> <output>. Maybe order is openstudio translate input output. Let's check help.",
+                  "refusal": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "stop"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 55,
+            "prompt_tokens": 1658,
+            "total_tokens": 1713,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 27,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 1024,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 2.5578e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 2.5578e-05,
+              "upstream_inference_prompt_cost": 2.0628e-05,
+              "upstream_inference_completions_cost": 4.95e-06
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        }
+      }
+    },
+    {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "index": 0,
+          "function": {
+            "arguments": "{\"command\":\"openstudio translate --help\"}",
+            "name": "bash"
+          },
+          "id": "call_1834C856282D4E0E9457F7FF",
+          "type": "function"
+        }
+      ],
+      "function_call": null,
+      "reasoning_content": "Need correct syntax: openstudio translate <input> <output>. Maybe syntax is openstudio translate <input> <output>. Let's check help.",
+      "provider_specific_fields": {
+        "reasoning_details": [
+          {
+            "type": "reasoning.text",
+            "text": "Need correct syntax: openstudio translate <input> <output>. Maybe syntax is openstudio translate <input> <output>. Let's check help.",
+            "format": "unknown",
+            "index": 0
+          }
+        ],
+        "reasoning": "Need correct syntax: openstudio translate <input> <output>. Maybe syntax is openstudio translate <input> <output>. Let's check help.",
+        "refusal": null
+      },
+      "extra": {
+        "actions": [
+          {
+            "command": "openstudio translate --help",
+            "tool_call_id": "call_1834C856282D4E0E9457F7FF"
+          }
+        ],
+        "response": {
+          "id": "gen-1792946564-H7Lm7rzqk1YWRjKDXReo",
+          "created": 1792946564,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "tool_calls",
+              "index": 0,
+              "message": {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "index": 0,
+                    "function": {
+                      "arguments": "{\"command\":\"openstudio translate --help\"}",
+                      "name": "bash"
+                    },
+                    "id": "call_1834C856282D4E0E9457F7FF",
+                    "type": "function"
+                  }
+                ],
+                "function_call": null,
+                "reasoning_content": "Need correct syntax: openstudio translate <input> <output>. Maybe syntax is openstudio translate <input> <output>. Let's check help.",
+                "provider_specific_fields": {
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "Need correct syntax: openstudio translate <input> <output>. Maybe syntax is openstudio translate <input> <output>. Let's check help.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ],
+                  "reasoning": "Need correct syntax: openstudio translate <input> <output>. Maybe syntax is openstudio translate <input> <output>. Let's check help.",
+                  "refusal": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "tool_calls"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 56,
+            "prompt_tokens": 1775,
+            "total_tokens": 1831,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 29,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 3.699e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 3.699e-05,
+              "upstream_inference_prompt_cost": 3.195e-05,
+              "upstream_inference_completions_cost": 5.04e-06
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        },
+        "cost": 0.0,
+        "timestamp": 1792946567.3966799
+      }
+    },
+    {
+      "content": "{\n  \"returncode\": 0,\n  \"output\": \"openstudio\\nUsage: openstudio [OPTIONS] [SUBCOMMAND]\\n\\nOptions:\\n  -h,--help                        Print this help message and exit\\n  --verbose Excludes: --loglevel   Print the full log to STDOUT - sets verbosity to Debug if given once and Trace if given twice.\\n  -l,--loglevel LEVEL              LogLevel settings: One of {Trace, Debug, Info, Warn, Error, Fatal} [Default: Warn] Excludes: --verbose\\n  -e,--execute CMD                 Execute one line of Ruby script (may be used more than once). Returns after executing commands.\\n  -c,--pyexecute CMD               Execute one line of Python script (may be used more than once). Returns after executing commands.\\n  -v,--version                     Display program version information and exit\\n\\n\\nRuby Options:\\n  -I,--include DIR                 Add additional directory to add to front of Ruby $LOAD_PATH (may be used more than once)\\n  --gem_path DIR                   Add additional directory to add to front of GEM_PATH environment variable (may be used more than once)\\n  --gem_home DIR                   Set GEM_HOME environment variable\\n  --bundle GEMFILE                 Use bundler for GEMFILE\\n  --bundle_path BUNDLE_PATH        Use bundler installed gems in BUNDLE_PATH\\n  --bundle_without WITHOUT_GROUPS  Space separated list of groups for bundler to exclude in WITHOUT_GROUPS.  Surround multiple groups with quotes like \\\"test development\\\"\\n\\n\\nPython Options:\\n  --python_path DIR                Add additional directory to add to front of PYTHONPATH environment variable (may be used more than once)\\n  --python_home DIR                Set PYTHONHOME environment variable\\n\\nSubcommands:\\n  execute_ruby_script              Executes a ruby file\\n  execute_python_script            Executes a python file\\n  interactive_ruby                 Executes a ruby REPL\\n  interactive_python               Executes a python REPL\\n  gem_list                         Lists the set of gems available to openstudio\\n  pip_list                         Lists the set of python modules available to openstudio\\n  run                              Executes an OpenStudio Workflow file\\n  update                           Updates OpenStudio Models to the current version\\n  measure                          Measure Commands\\n  classic                          For backwards compatibility, invoke an older version of the OpenStudio CLI that does not support Python\\n\\nVersion Info:\\n  openstudio_version               Returns the OpenStudio version used by the CLI\\n  energyplus_version               Returns the EnergyPlus version used by the CLI\\n  ruby_version                     Returns the Ruby version used by the CLI\\n  python_version                   Returns the Python version used by the CLI\\n\"\n}",
+      "extra": {
+        "raw_output": "openstudio\nUsage: openstudio [OPTIONS] [SUBCOMMAND]\n\nOptions:\n  -h,--help                        Print this help message and exit\n  --verbose Excludes: --loglevel   Print the full log to STDOUT - sets verbosity to Debug if given once and Trace if given twice.\n  -l,--loglevel LEVEL              LogLevel settings: One of {Trace, Debug, Info, Warn, Error, Fatal} [Default: Warn] Excludes: --verbose\n  -e,--execute CMD                 Execute one line of Ruby script (may be used more than once). Returns after executing commands.\n  -c,--pyexecute CMD               Execute one line of Python script (may be used more than once). Returns after executing commands.\n  -v,--version                     Display program version information and exit\n\n\nRuby Options:\n  -I,--include DIR                 Add additional directory to add to front of Ruby $LOAD_PATH (may be used more than once)\n  --gem_path DIR                   Add additional directory to add to front of GEM_PATH environment variable (may be used more than once)\n  --gem_home DIR                   Set GEM_HOME environment variable\n  --bundle GEMFILE                 Use bundler for GEMFILE\n  --bundle_path BUNDLE_PATH        Use bundler installed gems in BUNDLE_PATH\n  --bundle_without WITHOUT_GROUPS  Space separated list of groups for bundler to exclude in WITHOUT_GROUPS.  Surround multiple groups with quotes like \"test development\"\n\n\nPython Options:\n  --python_path DIR                Add additional directory to add to front of PYTHONPATH environment variable (may be used more than once)\n  --python_home DIR                Set PYTHONHOME environment variable\n\nSubcommands:\n  execute_ruby_script              Executes a ruby file\n  execute_python_script            Executes a python file\n  interactive_ruby                 Executes a ruby REPL\n  interactive_python               Executes a python REPL\n  gem_list                         Lists the set of gems available to openstudio\n  pip_list                         Lists the set of python modules available to openstudio\n  run                              Executes an OpenStudio Workflow file\n  update                           Updates OpenStudio Models to the current version\n  measure                          Measure Commands\n  classic                          For backwards compatibility, invoke an older version of the OpenStudio CLI that does not support Python\n\nVersion Info:\n  openstudio_version               Returns the OpenStudio version used by the CLI\n  energyplus_version               Returns the EnergyPlus version used by the CLI\n  ruby_version                     Returns the Ruby version used by the CLI\n  python_version                   Returns the Python version used by the CLI\n",
+        "returncode": 0,
+        "timestamp": 1792946567.477957,
+        "exception_info": ""
+      },
+      "tool_call_id": "call_1834C856282D4E0E9457F7FF",
+      "role": "tool"
+    },
+    {
+      "role": "user",
+      "content": "Tool call error:\n\n<error>\nNo tool calls found in the response. Every response MUST include at least one tool call.\n</error>\n\nHere is general guidance on how to submit correct toolcalls:\n\nEvery response needs to use the 'bash' tool at least once to execute commands.\n\nCall the bash tool with your command as the argument:\n- Tool: bash\n- Arguments: {\"command\": \"your_command_here\"}\n\nIf you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`\nwithout any other command.",
+      "extra": {
+        "interrupt_type": "FormatError",
+        "cost": 0.0,
+        "response": {
+          "id": "gen-1792946567-CC1lCkdu4tL5l9px7w1E",
+          "created": 1792946567,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "reasoning_content": "It seems openstudio CLI doesn't have translate subcommand. Maybe use openstudio translate? Actually openstudio has a command 'openstudio translate' but help shows no. Maybe use openstudio translate <input> <output> is not recognized. Instead use openstudio translate <input> <output> as a subcommand? Let's try openstudio translate.",
+                "provider_specific_fields": {
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "It seems openstudio CLI doesn't have translate subcommand. Maybe use openstudio translate? Actually openstudio has a command 'openstudio translate' but help shows no. Maybe use openstudio translate <input> <output> is not recognized. Instead use openstudio translate <input> <output> as a subcommand? Let's try openstudio translate.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ],
+                  "reasoning": "It seems openstudio CLI doesn't have translate subcommand. Maybe use openstudio translate? Actually openstudio has a command 'openstudio translate' but help shows no. Maybe use openstudio translate <input> <output> is not recognized. Instead use openstudio translate <input> <output> as a subcommand? Let's try openstudio translate.",
+                  "refusal": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "stop"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 93,
+            "prompt_tokens": 2445,
+            "total_tokens": 2538,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 70,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 5.238e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 5.238e-05,
+              "upstream_inference_prompt_cost": 4.401e-05,
+              "upstream_inference_completions_cost": 8.37e-06
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        }
+      }
+    },
+    {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "index": 0,
+          "function": {
+            "arguments": "{\"command\":\"openstudio run -i /app/input/building.osm -o /app/artifacts/generated_building.idf\"}",
+            "name": "bash"
+          },
+          "id": "call_46EBEA8EE7FF42BBBCA7E984",
+          "type": "function"
+        }
+      ],
+      "function_call": null,
+      "reasoning_content": "We need to use openstudio run? Actually translation is via openstudio run? Maybe use openstudio run -i building.osm -o output.idf. Let's try.",
+      "provider_specific_fields": {
+        "reasoning_details": [
+          {
+            "type": "reasoning.text",
+            "text": "We need to use openstudio run? Actually translation is via openstudio run? Maybe use openstudio run -i building.osm -o output.idf. Let's try.",
+            "format": "unknown",
+            "index": 0
+          }
+        ],
+        "reasoning": "We need to use openstudio run? Actually translation is via openstudio run? Maybe use openstudio run -i building.osm -o output.idf. Let's try.",
+        "refusal": null
+      },
+      "extra": {
+        "actions": [
+          {
+            "command": "openstudio run -i /app/input/building.osm -o /app/artifacts/generated_building.idf",
+            "tool_call_id": "call_46EBEA8EE7FF42BBBCA7E984"
+          }
+        ],
+        "response": {
+          "id": "gen-1792946575-jUWtiWcDLijv7OR91112",
+          "created": 1792946575,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "tool_calls",
+              "index": 0,
+              "message": {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "index": 0,
+                    "function": {
+                      "arguments": "{\"command\":\"openstudio run -i /app/input/building.osm -o /app/artifacts/generated_building.idf\"}",
+                      "name": "bash"
+                    },
+                    "id": "call_46EBEA8EE7FF42BBBCA7E984",
+                    "type": "function"
+                  }
+                ],
+                "function_call": null,
+                "reasoning_content": "We need to use openstudio run? Actually translation is via openstudio run? Maybe use openstudio run -i building.osm -o output.idf. Let's try.",
+                "provider_specific_fields": {
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "We need to use openstudio run? Actually translation is via openstudio run? Maybe use openstudio run -i building.osm -o output.idf. Let's try.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ],
+                  "reasoning": "We need to use openstudio run? Actually translation is via openstudio run? Maybe use openstudio run -i building.osm -o output.idf. Let's try.",
+                  "refusal": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "tool_calls"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 80,
+            "prompt_tokens": 2562,
+            "total_tokens": 2642,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 35,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 2048,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 3.4884e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 3.4884e-05,
+              "upstream_inference_prompt_cost": 2.7684e-05,
+              "upstream_inference_completions_cost": 7.2e-06
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        },
+        "cost": 0.0,
+        "timestamp": 1792946579.1783812
+      }
+    },
+    {
+      "content": "{\n  \"returncode\": 109,\n  \"output\": \"The following arguments were not expected: /app/artifacts/generated_building.idf -o /app/input/building.osm -i\\nRun with --help for more information.\\n\"\n}",
+      "extra": {
+        "raw_output": "The following arguments were not expected: /app/artifacts/generated_building.idf -o /app/input/building.osm -i\nRun with --help for more information.\n",
+        "returncode": 109,
+        "timestamp": 1792946579.1982012,
+        "exception_info": ""
+      },
+      "tool_call_id": "call_46EBEA8EE7FF42BBBCA7E984",
+      "role": "tool"
+    },
+    {
+      "role": "user",
+      "content": "Tool call error:\n\n<error>\nNo tool calls found in the response. Every response MUST include at least one tool call.\n</error>\n\nHere is general guidance on how to submit correct toolcalls:\n\nEvery response needs to use the 'bash' tool at least once to execute commands.\n\nCall the bash tool with your command as the argument:\n- Tool: bash\n- Arguments: {\"command\": \"your_command_here\"}\n\nIf you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`\nwithout any other command.",
+      "extra": {
+        "interrupt_type": "FormatError",
+        "cost": 0.0,
+        "response": {
+          "id": "gen-1792946579-JF1Wj6i3Sbgn96pTorBW",
+          "created": 1792946579,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "reasoning_content": "Maybe use openstudio translate? Let's check openstudio translate usage.",
+                "provider_specific_fields": {
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "Maybe use openstudio translate? Let's check openstudio translate usage.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ],
+                  "reasoning": "Maybe use openstudio translate? Let's check openstudio translate usage.",
+                  "refusal": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "stop"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 38,
+            "prompt_tokens": 2720,
+            "total_tokens": 2758,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 13,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 5.238e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 5.238e-05,
+              "upstream_inference_prompt_cost": 4.896e-05,
+              "upstream_inference_completions_cost": 3.42e-06
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "Tool call error:\n\n<error>\nNo tool calls found in the response. Every response MUST include at least one tool call.\n</error>\n\nHere is general guidance on how to submit correct toolcalls:\n\nEvery response needs to use the 'bash' tool at least once to execute commands.\n\nCall the bash tool with your command as the argument:\n- Tool: bash\n- Arguments: {\"command\": \"your_command_here\"}\n\nIf you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`\nwithout any other command.",
+      "extra": {
+        "interrupt_type": "FormatError",
+        "cost": 0.0,
+        "response": {
+          "id": "gen-1792946582-RfSxZrdFhSyLTkdBuZ4y",
+          "created": 1792946582,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "reasoning_content": "Maybe openstudio translate is a script. Let's list openstudio commands.",
+                "provider_specific_fields": {
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "Maybe openstudio translate is a script. Let's list openstudio commands.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ],
+                  "reasoning": "Maybe openstudio translate is a script. Let's list openstudio commands.",
+                  "refusal": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "stop"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 38,
+            "prompt_tokens": 2837,
+            "total_tokens": 2875,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 14,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 5.4486e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 5.4486e-05,
+              "upstream_inference_prompt_cost": 5.1066e-05,
+              "upstream_inference_completions_cost": 3.42e-06
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "Tool call error:\n\n<error>\nNo tool calls found in the response. Every response MUST include at least one tool call.\n</error>\n\nHere is general guidance on how to submit correct toolcalls:\n\nEvery response needs to use the 'bash' tool at least once to execute commands.\n\nCall the bash tool with your command as the argument:\n- Tool: bash\n- Arguments: {\"command\": \"your_command_here\"}\n\nIf you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`\nwithout any other command.",
+      "extra": {
+        "interrupt_type": "FormatError",
+        "cost": 0.0,
+        "response": {
+          "id": "gen-1792946585-xATceQuX1WVHB71yR48z",
+          "created": 1792946585,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "reasoning_content": "We must include tool call. Let's just create a script that does translation using openstudio run? Maybe openstudio run -i building.osm -o output.idf. But error. Maybe openstudio run -i building.osm -o output.idf -r? Let's check openstudio run help.",
+                "provider_specific_fields": {
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "We must include tool call. Let's just create a script that does translation using openstudio run? Maybe openstudio run -i building.osm -o output.idf. But error. Maybe openstudio run -i building.osm -o output.idf -r? Let's check openstudio run help.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ],
+                  "reasoning": "We must include tool call. Let's just create a script that does translation using openstudio run? Maybe openstudio run -i building.osm -o output.idf. But error. Maybe openstudio run -i building.osm -o output.idf -r? Let's check openstudio run help.",
+                  "refusal": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "stop"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 86,
+            "prompt_tokens": 2954,
+            "total_tokens": 3040,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 61,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 6.0912e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 6.0912e-05,
+              "upstream_inference_prompt_cost": 5.3172e-05,
+              "upstream_inference_completions_cost": 7.74e-06
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        }
+      }
+    },
+    {
+      "role": "exit",
+      "content": "RepeatedFormatError",
+      "extra": {
+        "exit_status": "RepeatedFormatError",
+        "submission": ""
+      }
+    }
+  ],
+  "trajectory_format": "mini-swe-agent-1.1"
+}

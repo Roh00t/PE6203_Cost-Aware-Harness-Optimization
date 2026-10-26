@@ -1,0 +1,767 @@
+{
+  "info": {
+    "model_stats": {
+      "instance_cost": 0.0,
+      "api_calls": 8
+    },
+    "config": {
+      "agent": {
+        "system_template": "You are a helpful assistant that can interact with a computer.\n",
+        "instance_template": "Please solve this issue: {{task}}\n\nYou can execute bash commands and edit files to implement the necessary changes.\n\n## Recommended Workflow\n\nThis workflow should be done step-by-step so that you can iterate on your changes and any possible problems.\n\n1. Analyze the codebase by finding and reading relevant files\n2. Create a script to reproduce the issue\n3. Edit the source code to resolve the issue\n4. Verify your fix works by running your script again\n5. Test edge cases to ensure your fix is robust\n6. Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.\n   Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>\n\n## Command Execution Rules\n\nYou are operating in an environment where\n\n1. You issue at least one command\n2. The system executes the command(s) in a subshell\n3. You see the result(s)\n4. You write your next command(s)\n\nEach response should include:\n\n1. **Reasoning text** where you explain your analysis and plan\n2. At least one tool call with your command\n\n**CRITICAL REQUIREMENTS:**\n\n- Your response SHOULD include reasoning text explaining what you're doing\n- Your response MUST include AT LEAST ONE bash tool call\n- Directory or environment variable changes are not persistent. Every action is executed in a new subshell.\n- However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd /path/to/working/dir && ...` or write/load environment variables from files\n- Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.\n  Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>\n\nExample of a CORRECT response:\n<example_response>\nI need to understand the structure of the repository first. Let me check what files are in the current directory to get a better understanding of the codebase.\n\n[Makes bash tool call with {\"command\": \"ls -la\"} as arguments]\n</example_response>\n\n<system_information>\n{{system}} {{release}} {{version}} {{machine}}\n</system_information>\n\n## Useful command examples\n\n### Create a new file:\n\n```bash\ncat <<'EOF' > newfile.py\nimport numpy as np\nhello = \"world\"\nprint(hello)\nEOF\n```\n\n### Edit files with sed:\n\n{%- if system == \"Darwin\" -%}\n<important>\nYou are on MacOS. For all the below examples, you need to use `sed -i ''` instead of `sed -i`.\n</important>\n{%- endif -%}\n\n```bash\n# Replace all occurrences\nsed -i 's/old_string/new_string/g' filename.py\n\n# Replace only first occurrence\nsed -i 's/old_string/new_string/' filename.py\n\n# Replace first occurrence on line 1\nsed -i '1s/old_string/new_string/' filename.py\n\n# Replace all occurrences in lines 1-10\nsed -i '1,10s/old_string/new_string/g' filename.py\n```\n\n### View file content:\n\n```bash\n# View specific lines with numbers\nnl -ba filename.py | sed -n '10,20p'\n```\n\n### Any other command you want to run\n\n```bash\nanything\n```\n",
+        "step_limit": 0,
+        "cost_limit": 0.0,
+        "wall_time_limit_seconds": 0,
+        "max_consecutive_format_errors": 3,
+        "output_path": "/logs/agent/mini-swe-agent.trajectory.json",
+        "mode": "yolo",
+        "whitelist_actions": [],
+        "confirm_exit": false
+      },
+      "agent_type": "minisweagent.agents.interactive.InteractiveAgent",
+      "model": {
+        "model_name": "openrouter/openai/gpt-oss-20b",
+        "model_kwargs": {
+          "drop_params": true,
+          "max_tokens": 8192,
+          "extra_body": {
+            "provider": {
+              "order": [
+                "Darkbloom"
+              ],
+              "allow_fallbacks": false,
+              "require_parameters": true
+            },
+            "reasoning": {
+              "effort": "low"
+            },
+            "usage": {
+              "include": true
+            }
+          }
+        },
+        "litellm_model_registry": null,
+        "set_cache_control": null,
+        "cost_tracking": "ignore_errors",
+        "format_error_template": "{% if finish_reason is defined and (finish_reason == \"length\" or (finish_reason == \"tool_calls\" and not has_tool_calls)) -%}\nYour previous response reached the output token limit (finish_reason={{ finish_reason }}) before you produced a tool call, so it was cut off. Respond more concisely and finish with exactly one bash tool call. If you need to think more, do so briefly.\n{%- else -%}\nTool call error:\n\n<error>\n{{error}}\n</error>\n\nHere is general guidance on how to submit correct toolcalls:\n\nEvery response needs to use the 'bash' tool at least once to execute commands.\n\nCall the bash tool with your command as the argument:\n- Tool: bash\n- Arguments: {\"command\": \"your_command_here\"}\n\nIf you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`\nwithout any other command.\n{%- endif %}\n",
+        "observation_template": "{%- if output.output | length < 10000 -%}\n{\n  \"returncode\": {{ output.returncode }},\n  \"output\": {{ output.output | tojson }}\n  {%- if output.exception_info %}, \"exception_info\": {{ output.exception_info | tojson }}{% endif %}\n}\n{%- else -%}\n{\n  \"returncode\": {{ output.returncode }},\n  \"output_head\": {{ output.output[:5000] | tojson }},\n  \"output_tail\": {{ output.output[-5000:] | tojson }},\n  \"elided_chars\": {{ output.output | length - 10000 }},\n  \"warning\": \"Output too long.\"\n  {%- if output.exception_info %}, \"exception_info\": {{ output.exception_info | tojson }}{% endif %}\n}\n{%- endif -%}\n",
+        "multimodal_regex": ""
+      },
+      "model_type": "minisweagent.models.litellm_model.LitellmModel",
+      "environment": {
+        "cwd": "",
+        "env": {
+          "PAGER": "cat",
+          "MANPAGER": "cat",
+          "LESS": "-R",
+          "PIP_PROGRESS_BAR": "off",
+          "TQDM_DISABLE": "1"
+        },
+        "timeout": 30
+      },
+      "environment_type": "minisweagent.environments.local.LocalEnvironment"
+    },
+    "mini_version": "2.4.6",
+    "exit_status": "RepeatedFormatError",
+    "submission": ""
+  },
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a helpful assistant that can interact with a computer."
+    },
+    {
+      "role": "user",
+      "content": "Please solve this issue: Given the file `/home/user/Desktop/src.mp4`, could you help me create a 5-second animated GIF clip beginning at 00:03, optionally using VLC and GIMP if needed? Please save the final output to `/home/user/Desktop/src_clip.gif`.\n\n\nYou can execute bash commands and edit files to implement the necessary changes.\n\n## Recommended Workflow\n\nThis workflow should be done step-by-step so that you can iterate on your changes and any possible problems.\n\n1. Analyze the codebase by finding and reading relevant files\n2. Create a script to reproduce the issue\n3. Edit the source code to resolve the issue\n4. Verify your fix works by running your script again\n5. Test edge cases to ensure your fix is robust\n6. Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.\n   Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>\n\n## Command Execution Rules\n\nYou are operating in an environment where\n\n1. You issue at least one command\n2. The system executes the command(s) in a subshell\n3. You see the result(s)\n4. You write your next command(s)\n\nEach response should include:\n\n1. **Reasoning text** where you explain your analysis and plan\n2. At least one tool call with your command\n\n**CRITICAL REQUIREMENTS:**\n\n- Your response SHOULD include reasoning text explaining what you're doing\n- Your response MUST include AT LEAST ONE bash tool call\n- Directory or environment variable changes are not persistent. Every action is executed in a new subshell.\n- However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd /path/to/working/dir && ...` or write/load environment variables from files\n- Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.\n  Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>\n\nExample of a CORRECT response:\n<example_response>\nI need to understand the structure of the repository first. Let me check what files are in the current directory to get a better understanding of the codebase.\n\n[Makes bash tool call with {\"command\": \"ls -la\"} as arguments]\n</example_response>\n\n<system_information>\nLinux 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64\n</system_information>\n\n## Useful command examples\n\n### Create a new file:\n\n```bash\ncat <<'EOF' > newfile.py\nimport numpy as np\nhello = \"world\"\nprint(hello)\nEOF\n```\n\n### Edit files with sed:```bash\n# Replace all occurrences\nsed -i 's/old_string/new_string/g' filename.py\n\n# Replace only first occurrence\nsed -i 's/old_string/new_string/' filename.py\n\n# Replace first occurrence on line 1\nsed -i '1s/old_string/new_string/' filename.py\n\n# Replace all occurrences in lines 1-10\nsed -i '1,10s/old_string/new_string/g' filename.py\n```\n\n### View file content:\n\n```bash\n# View specific lines with numbers\nnl -ba filename.py | sed -n '10,20p'\n```\n\n### Any other command you want to run\n\n```bash\nanything\n```"
+    },
+    {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "index": 0,
+          "function": {
+            "arguments": "{\"command\":\"ffmpeg -ss 00:00:03 -t 5 -i /home/user/Desktop/src.mp4 -vf \\\"fps=10,scale=320:-1:flags=lanczos\\\" -gifflags -transdiff -y /home/user/Desktop/src_clip.gif\"}",
+            "name": "bash"
+          },
+          "id": "call_F8A7005FA27F453FAF8737B7",
+          "type": "function"
+        }
+      ],
+      "function_call": null,
+      "reasoning_content": "We need to create GIF from mp4. Use ffmpeg. Command: ffmpeg -ss 00:00:03 -t 5 -i src.mp4 -vf \"fps=10,scale=320:-1:flags=lanczos\" -gifflags -transdiff -y src_clip.gif. Let's run.",
+      "provider_specific_fields": {
+        "reasoning": "We need to create GIF from mp4. Use ffmpeg. Command: ffmpeg -ss 00:00:03 -t 5 -i src.mp4 -vf \"fps=10,scale=320:-1:flags=lanczos\" -gifflags -transdiff -y src_clip.gif. Let's run.",
+        "reasoning_details": [
+          {
+            "type": "reasoning.text",
+            "text": "We need to create GIF from mp4. Use ffmpeg. Command: ffmpeg -ss 00:00:03 -t 5 -i src.mp4 -vf \"fps=10,scale=320:-1:flags=lanczos\" -gifflags -transdiff -y src_clip.gif. Let's run.",
+            "format": "unknown",
+            "index": 0
+          }
+        ],
+        "refusal": null
+      },
+      "extra": {
+        "actions": [
+          {
+            "command": "ffmpeg -ss 00:00:03 -t 5 -i /home/user/Desktop/src.mp4 -vf \"fps=10,scale=320:-1:flags=lanczos\" -gifflags -transdiff -y /home/user/Desktop/src_clip.gif",
+            "tool_call_id": "call_F8A7005FA27F453FAF8737B7"
+          }
+        ],
+        "response": {
+          "id": "gen-1792962354-bthuJi8jzuL7hSNkeaOU",
+          "created": 1792962354,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "tool_calls",
+              "index": 0,
+              "message": {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "index": 0,
+                    "function": {
+                      "arguments": "{\"command\":\"ffmpeg -ss 00:00:03 -t 5 -i /home/user/Desktop/src.mp4 -vf \\\"fps=10,scale=320:-1:flags=lanczos\\\" -gifflags -transdiff -y /home/user/Desktop/src_clip.gif\"}",
+                      "name": "bash"
+                    },
+                    "id": "call_F8A7005FA27F453FAF8737B7",
+                    "type": "function"
+                  }
+                ],
+                "function_call": null,
+                "reasoning_content": "We need to create GIF from mp4. Use ffmpeg. Command: ffmpeg -ss 00:00:03 -t 5 -i src.mp4 -vf \"fps=10,scale=320:-1:flags=lanczos\" -gifflags -transdiff -y src_clip.gif. Let's run.",
+                "provider_specific_fields": {
+                  "reasoning": "We need to create GIF from mp4. Use ffmpeg. Command: ffmpeg -ss 00:00:03 -t 5 -i src.mp4 -vf \"fps=10,scale=320:-1:flags=lanczos\" -gifflags -transdiff -y src_clip.gif. Let's run.",
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "We need to create GIF from mp4. Use ffmpeg. Command: ffmpeg -ss 00:00:03 -t 5 -i src.mp4 -vf \"fps=10,scale=320:-1:flags=lanczos\" -gifflags -transdiff -y src_clip.gif. Let's run.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ],
+                  "refusal": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "tool_calls"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 146,
+            "prompt_tokens": 874,
+            "total_tokens": 1020,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 67,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 2.8872e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 2.8872e-05,
+              "upstream_inference_prompt_cost": 1.5732e-05,
+              "upstream_inference_completions_cost": 1.314e-05
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        },
+        "cost": 0.0,
+        "timestamp": 1792962356.7649107
+      }
+    },
+    {
+      "content": "{\n  \"returncode\": 0,\n  \"output\": \"ffmpeg version 5.1.9-0+deb12u1 Copyright (c) 2000-2026 the FFmpeg developers\\n  built with gcc 12 (Debian 12.2.0-14+deb12u1)\\n  configuration: --prefix=/usr --extra-version=0+deb12u1 --toolchain=hardened --libdir=/usr/lib/x86_64-linux-gnu --incdir=/usr/include/x86_64-linux-gnu --arch=amd64 --enable-gpl --disable-stripping --enable-gnutls --enable-ladspa --enable-libaom --enable-libass --enable-libbluray --enable-libbs2b --enable-libcaca --enable-libcdio --enable-libcodec2 --enable-libdav1d --enable-libflite --enable-libfontconfig --enable-libfreetype --enable-libfribidi --enable-libglslang --enable-libgme --enable-libgsm --enable-libjack --enable-libmp3lame --enable-libmysofa --enable-libopenjpeg --enable-libopenmpt --enable-libopus --enable-libpulse --enable-librabbitmq --enable-librist --enable-librubberband --enable-libshine --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtheora --enable-libtwolame --enable-libvidstab --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx265 --enable-libxml2 --enable-libxvid --enable-libzimg --enable-libzmq --enable-libzvbi --enable-lv2 --enable-omx --enable-openal --enable-opencl --enable-opengl --enable-sdl2 --disable-sndio --enable-libjxl --enable-pocketsphinx --enable-librsvg --enable-libmfx --enable-libdc1394 --enable-libdrm --enable-libiec61883 --enable-chromaprint --enable-frei0r --enable-libx264 --enable-libplacebo --enable-librav1e --enable-shared\\n  libavutil      57. 28.100 / 57. 28.100\\n  libavcodec     59. 37.100 / 59. 37.100\\n  libavformat    59. 27.100 / 59. 27.100\\n  libavdevice    59.  7.100 / 59.  7.100\\n  libavfilter     8. 44.100 /  8. 44.100\\n  libswscale      6.  7.100 /  6.  7.100\\n  libswresample   4.  7.100 /  4.  7.100\\n  libpostproc    56.  6.100 / 56.  6.100\\nInput #0, mov,mp4,m4a,3gp,3g2,mj2, from \\u0027/home/user/Desktop/src.mp4\\u0027:\\n  Metadata:\\n    major_brand     : mp42\\n    minor_version   : 0\\n    compatible_brands: mp42mp41isomavc1\\n    creation_time   : 2015-08-07T09:13:05.000000Z\\n  Duration: 00:00:30.53, start: 0.000000, bitrate: 816 kb/s\\n  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(progressive), 640x360 [SAR 1:1 DAR 16:9], 710 kb/s, 30 fps, 30 tbr, 30 tbn (default)\\n    Metadata:\\n      creation_time   : 2015-08-07T09:13:05.000000Z\\n      handler_name    : L-SMASH Video Handler\\n      vendor_id       : [0][0][0][0]\\n      encoder         : AVC Coding\\n  Stream #0:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo, fltp, 112 kb/s (default)\\n    Metadata:\\n      creation_time   : 2015-08-07T09:13:05.000000Z\\n      handler_name    : L-SMASH Audio Handler\\n      vendor_id       : [0][0][0][0]\\nStream mapping:\\n  Stream #0:0 -\\u003e #0:0 (h264 (native) -\\u003e gif (native))\\nPress [q] to stop, [?] for help\\nOutput #0, gif, to \\u0027/home/user/Desktop/src_clip.gif\\u0027:\\n  Metadata:\\n    major_brand     : mp42\\n    minor_version   : 0\\n    compatible_brands: mp42mp41isomavc1\\n    encoder         : Lavf59.27.100\\n  Stream #0:0(und): Video: gif, bgr8(pc, gbr/unknown/unknown, progressive), 320x180 [SAR 1:1 DAR 16:9], q=2-31, 200 kb/s, 10 fps, 100 tbn (default)\\n    Metadata:\\n      creation_time   : 2015-08-07T09:13:05.000000Z\\n      handler_name    : L-SMASH Video Handler\\n      vendor_id       : [0][0][0][0]\\n      encoder         : Lavc59.37.100 gif\\nframe=    1 fps=0.0 q=-0.0 size=       0kB time=00:00:00.01 bitrate=   0.0kbits/s speed=0.306x    \\nframe=   50 fps=0.0 q=-0.0 Lsize=     275kB time=00:00:04.91 bitrate= 458.4kbits/s speed=37.4x    \\nvideo:275kB audio:0kB subtitle:0kB other streams:0kB global headers:0kB muxing overhead: 0.007109%\\n\"\n}",
+      "extra": {
+        "raw_output": "ffmpeg version 5.1.9-0+deb12u1 Copyright (c) 2000-2026 the FFmpeg developers\n  built with gcc 12 (Debian 12.2.0-14+deb12u1)\n  configuration: --prefix=/usr --extra-version=0+deb12u1 --toolchain=hardened --libdir=/usr/lib/x86_64-linux-gnu --incdir=/usr/include/x86_64-linux-gnu --arch=amd64 --enable-gpl --disable-stripping --enable-gnutls --enable-ladspa --enable-libaom --enable-libass --enable-libbluray --enable-libbs2b --enable-libcaca --enable-libcdio --enable-libcodec2 --enable-libdav1d --enable-libflite --enable-libfontconfig --enable-libfreetype --enable-libfribidi --enable-libglslang --enable-libgme --enable-libgsm --enable-libjack --enable-libmp3lame --enable-libmysofa --enable-libopenjpeg --enable-libopenmpt --enable-libopus --enable-libpulse --enable-librabbitmq --enable-librist --enable-librubberband --enable-libshine --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtheora --enable-libtwolame --enable-libvidstab --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx265 --enable-libxml2 --enable-libxvid --enable-libzimg --enable-libzmq --enable-libzvbi --enable-lv2 --enable-omx --enable-openal --enable-opencl --enable-opengl --enable-sdl2 --disable-sndio --enable-libjxl --enable-pocketsphinx --enable-librsvg --enable-libmfx --enable-libdc1394 --enable-libdrm --enable-libiec61883 --enable-chromaprint --enable-frei0r --enable-libx264 --enable-libplacebo --enable-librav1e --enable-shared\n  libavutil      57. 28.100 / 57. 28.100\n  libavcodec     59. 37.100 / 59. 37.100\n  libavformat    59. 27.100 / 59. 27.100\n  libavdevice    59.  7.100 / 59.  7.100\n  libavfilter     8. 44.100 /  8. 44.100\n  libswscale      6.  7.100 /  6.  7.100\n  libswresample   4.  7.100 /  4.  7.100\n  libpostproc    56.  6.100 / 56.  6.100\nInput #0, mov,mp4,m4a,3gp,3g2,mj2, from '/home/user/Desktop/src.mp4':\n  Metadata:\n    major_brand     : mp42\n    minor_version   : 0\n    compatible_brands: mp42mp41isomavc1\n    creation_time   : 2015-08-07T09:13:05.000000Z\n  Duration: 00:00:30.53, start: 0.000000, bitrate: 816 kb/s\n  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(progressive), 640x360 [SAR 1:1 DAR 16:9], 710 kb/s, 30 fps, 30 tbr, 30 tbn (default)\n    Metadata:\n      creation_time   : 2015-08-07T09:13:05.000000Z\n      handler_name    : L-SMASH Video Handler\n      vendor_id       : [0][0][0][0]\n      encoder         : AVC Coding\n  Stream #0:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo, fltp, 112 kb/s (default)\n    Metadata:\n      creation_time   : 2015-08-07T09:13:05.000000Z\n      handler_name    : L-SMASH Audio Handler\n      vendor_id       : [0][0][0][0]\nStream mapping:\n  Stream #0:0 -> #0:0 (h264 (native) -> gif (native))\nPress [q] to stop, [?] for help\nOutput #0, gif, to '/home/user/Desktop/src_clip.gif':\n  Metadata:\n    major_brand     : mp42\n    minor_version   : 0\n    compatible_brands: mp42mp41isomavc1\n    encoder         : Lavf59.27.100\n  Stream #0:0(und): Video: gif, bgr8(pc, gbr/unknown/unknown, progressive), 320x180 [SAR 1:1 DAR 16:9], q=2-31, 200 kb/s, 10 fps, 100 tbn (default)\n    Metadata:\n      creation_time   : 2015-08-07T09:13:05.000000Z\n      handler_name    : L-SMASH Video Handler\n      vendor_id       : [0][0][0][0]\n      encoder         : Lavc59.37.100 gif\nframe=    1 fps=0.0 q=-0.0 size=       0kB time=00:00:00.01 bitrate=   0.0kbits/s speed=0.306x    \nframe=   50 fps=0.0 q=-0.0 Lsize=     275kB time=00:00:04.91 bitrate= 458.4kbits/s speed=37.4x    \nvideo:275kB audio:0kB subtitle:0kB other streams:0kB global headers:0kB muxing overhead: 0.007109%\n",
+        "returncode": 0,
+        "timestamp": 1792962357.6951356,
+        "exception_info": ""
+      },
+      "tool_call_id": "call_F8A7005FA27F453FAF8737B7",
+      "role": "tool"
+    },
+    {
+      "role": "user",
+      "content": "Tool call error:\n\n<error>\nNo tool calls found in the response. Every response MUST include at least one tool call.\n</error>\n\nHere is general guidance on how to submit correct toolcalls:\n\nEvery response needs to use the 'bash' tool at least once to execute commands.\n\nCall the bash tool with your command as the argument:\n- Tool: bash\n- Arguments: {\"command\": \"your_command_here\"}\n\nIf you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`\nwithout any other command.",
+      "extra": {
+        "interrupt_type": "FormatError",
+        "cost": 0.0,
+        "response": {
+          "id": "gen-1792962357-epNG5ILmbyoAJumHsfyB",
+          "created": 1792962357,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "The 5\u2011second GIF clip has been created successfully and saved to:\n\n```\n/home/user/Desktop/src_clip.gif\n```\n\nYou can view it with any image viewer that supports GIFs. If you need to adjust the frame rate, size, or quality, feel free to tweak the `ffmpeg` command accordingly.",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "provider_specific_fields": {
+                  "refusal": null,
+                  "reasoning": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "stop"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 70,
+            "prompt_tokens": 2506,
+            "total_tokens": 2576,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 5.1408e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 5.1408e-05,
+              "upstream_inference_prompt_cost": 4.5108e-05,
+              "upstream_inference_completions_cost": 6.3e-06
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        }
+      }
+    },
+    {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "index": 0,
+          "function": {
+            "arguments": "{\"command\":\"ffmpeg -ss 00:00:03 -t 5 -i /home/user/Desktop/src.mp4 -vf \\\"fps=10,scale=320:-1:flags=lanczos\\\" -gifflags -transdiff -y /home/user/Desktop/src_clip.gif\"}",
+            "name": "bash"
+          },
+          "id": "call_68033515B77C47DDA7CC174D",
+          "type": "function"
+        }
+      ],
+      "function_call": null,
+      "reasoning_content": "Need to include tool call.",
+      "provider_specific_fields": {
+        "reasoning": "Need to include tool call.",
+        "reasoning_details": [
+          {
+            "type": "reasoning.text",
+            "text": "Need to include tool call.",
+            "format": "unknown",
+            "index": 0
+          }
+        ],
+        "refusal": null
+      },
+      "extra": {
+        "actions": [
+          {
+            "command": "ffmpeg -ss 00:00:03 -t 5 -i /home/user/Desktop/src.mp4 -vf \"fps=10,scale=320:-1:flags=lanczos\" -gifflags -transdiff -y /home/user/Desktop/src_clip.gif",
+            "tool_call_id": "call_68033515B77C47DDA7CC174D"
+          }
+        ],
+        "response": {
+          "id": "gen-1792962360-ndNozDASgqb4mp0E0sCu",
+          "created": 1792962360,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "tool_calls",
+              "index": 0,
+              "message": {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "index": 0,
+                    "function": {
+                      "arguments": "{\"command\":\"ffmpeg -ss 00:00:03 -t 5 -i /home/user/Desktop/src.mp4 -vf \\\"fps=10,scale=320:-1:flags=lanczos\\\" -gifflags -transdiff -y /home/user/Desktop/src_clip.gif\"}",
+                      "name": "bash"
+                    },
+                    "id": "call_68033515B77C47DDA7CC174D",
+                    "type": "function"
+                  }
+                ],
+                "function_call": null,
+                "reasoning_content": "Need to include tool call.",
+                "provider_specific_fields": {
+                  "reasoning": "Need to include tool call.",
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "Need to include tool call.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ],
+                  "refusal": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "tool_calls"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 87,
+            "prompt_tokens": 2623,
+            "total_tokens": 2710,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 6,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 5.5044e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 5.5044e-05,
+              "upstream_inference_prompt_cost": 4.7214e-05,
+              "upstream_inference_completions_cost": 7.83e-06
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        },
+        "cost": 0.0,
+        "timestamp": 1792962364.4483533
+      }
+    },
+    {
+      "content": "{\n  \"returncode\": 0,\n  \"output\": \"ffmpeg version 5.1.9-0+deb12u1 Copyright (c) 2000-2026 the FFmpeg developers\\n  built with gcc 12 (Debian 12.2.0-14+deb12u1)\\n  configuration: --prefix=/usr --extra-version=0+deb12u1 --toolchain=hardened --libdir=/usr/lib/x86_64-linux-gnu --incdir=/usr/include/x86_64-linux-gnu --arch=amd64 --enable-gpl --disable-stripping --enable-gnutls --enable-ladspa --enable-libaom --enable-libass --enable-libbluray --enable-libbs2b --enable-libcaca --enable-libcdio --enable-libcodec2 --enable-libdav1d --enable-libflite --enable-libfontconfig --enable-libfreetype --enable-libfribidi --enable-libglslang --enable-libgme --enable-libgsm --enable-libjack --enable-libmp3lame --enable-libmysofa --enable-libopenjpeg --enable-libopenmpt --enable-libopus --enable-libpulse --enable-librabbitmq --enable-librist --enable-librubberband --enable-libshine --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtheora --enable-libtwolame --enable-libvidstab --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx265 --enable-libxml2 --enable-libxvid --enable-libzimg --enable-libzmq --enable-libzvbi --enable-lv2 --enable-omx --enable-openal --enable-opencl --enable-opengl --enable-sdl2 --disable-sndio --enable-libjxl --enable-pocketsphinx --enable-librsvg --enable-libmfx --enable-libdc1394 --enable-libdrm --enable-libiec61883 --enable-chromaprint --enable-frei0r --enable-libx264 --enable-libplacebo --enable-librav1e --enable-shared\\n  libavutil      57. 28.100 / 57. 28.100\\n  libavcodec     59. 37.100 / 59. 37.100\\n  libavformat    59. 27.100 / 59. 27.100\\n  libavdevice    59.  7.100 / 59.  7.100\\n  libavfilter     8. 44.100 /  8. 44.100\\n  libswscale      6.  7.100 /  6.  7.100\\n  libswresample   4.  7.100 /  4.  7.100\\n  libpostproc    56.  6.100 / 56.  6.100\\nInput #0, mov,mp4,m4a,3gp,3g2,mj2, from \\u0027/home/user/Desktop/src.mp4\\u0027:\\n  Metadata:\\n    major_brand     : mp42\\n    minor_version   : 0\\n    compatible_brands: mp42mp41isomavc1\\n    creation_time   : 2015-08-07T09:13:05.000000Z\\n  Duration: 00:00:30.53, start: 0.000000, bitrate: 816 kb/s\\n  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(progressive), 640x360 [SAR 1:1 DAR 16:9], 710 kb/s, 30 fps, 30 tbr, 30 tbn (default)\\n    Metadata:\\n      creation_time   : 2015-08-07T09:13:05.000000Z\\n      handler_name    : L-SMASH Video Handler\\n      vendor_id       : [0][0][0][0]\\n      encoder         : AVC Coding\\n  Stream #0:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo, fltp, 112 kb/s (default)\\n    Metadata:\\n      creation_time   : 2015-08-07T09:13:05.000000Z\\n      handler_name    : L-SMASH Audio Handler\\n      vendor_id       : [0][0][0][0]\\nStream mapping:\\n  Stream #0:0 -\\u003e #0:0 (h264 (native) -\\u003e gif (native))\\nPress [q] to stop, [?] for help\\nOutput #0, gif, to \\u0027/home/user/Desktop/src_clip.gif\\u0027:\\n  Metadata:\\n    major_brand     : mp42\\n    minor_version   : 0\\n    compatible_brands: mp42mp41isomavc1\\n    encoder         : Lavf59.27.100\\n  Stream #0:0(und): Video: gif, bgr8(pc, gbr/unknown/unknown, progressive), 320x180 [SAR 1:1 DAR 16:9], q=2-31, 200 kb/s, 10 fps, 100 tbn (default)\\n    Metadata:\\n      creation_time   : 2015-08-07T09:13:05.000000Z\\n      handler_name    : L-SMASH Video Handler\\n      vendor_id       : [0][0][0][0]\\n      encoder         : Lavc59.37.100 gif\\nframe=    1 fps=0.0 q=-0.0 size=       0kB time=00:00:00.01 bitrate=   0.0kbits/s speed=0.357x    \\nframe=   50 fps=0.0 q=-0.0 Lsize=     275kB time=00:00:04.91 bitrate= 458.4kbits/s speed=47.5x    \\nvideo:275kB audio:0kB subtitle:0kB other streams:0kB global headers:0kB muxing overhead: 0.007109%\\n\"\n}",
+      "extra": {
+        "raw_output": "ffmpeg version 5.1.9-0+deb12u1 Copyright (c) 2000-2026 the FFmpeg developers\n  built with gcc 12 (Debian 12.2.0-14+deb12u1)\n  configuration: --prefix=/usr --extra-version=0+deb12u1 --toolchain=hardened --libdir=/usr/lib/x86_64-linux-gnu --incdir=/usr/include/x86_64-linux-gnu --arch=amd64 --enable-gpl --disable-stripping --enable-gnutls --enable-ladspa --enable-libaom --enable-libass --enable-libbluray --enable-libbs2b --enable-libcaca --enable-libcdio --enable-libcodec2 --enable-libdav1d --enable-libflite --enable-libfontconfig --enable-libfreetype --enable-libfribidi --enable-libglslang --enable-libgme --enable-libgsm --enable-libjack --enable-libmp3lame --enable-libmysofa --enable-libopenjpeg --enable-libopenmpt --enable-libopus --enable-libpulse --enable-librabbitmq --enable-librist --enable-librubberband --enable-libshine --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtheora --enable-libtwolame --enable-libvidstab --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx265 --enable-libxml2 --enable-libxvid --enable-libzimg --enable-libzmq --enable-libzvbi --enable-lv2 --enable-omx --enable-openal --enable-opencl --enable-opengl --enable-sdl2 --disable-sndio --enable-libjxl --enable-pocketsphinx --enable-librsvg --enable-libmfx --enable-libdc1394 --enable-libdrm --enable-libiec61883 --enable-chromaprint --enable-frei0r --enable-libx264 --enable-libplacebo --enable-librav1e --enable-shared\n  libavutil      57. 28.100 / 57. 28.100\n  libavcodec     59. 37.100 / 59. 37.100\n  libavformat    59. 27.100 / 59. 27.100\n  libavdevice    59.  7.100 / 59.  7.100\n  libavfilter     8. 44.100 /  8. 44.100\n  libswscale      6.  7.100 /  6.  7.100\n  libswresample   4.  7.100 /  4.  7.100\n  libpostproc    56.  6.100 / 56.  6.100\nInput #0, mov,mp4,m4a,3gp,3g2,mj2, from '/home/user/Desktop/src.mp4':\n  Metadata:\n    major_brand     : mp42\n    minor_version   : 0\n    compatible_brands: mp42mp41isomavc1\n    creation_time   : 2015-08-07T09:13:05.000000Z\n  Duration: 00:00:30.53, start: 0.000000, bitrate: 816 kb/s\n  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(progressive), 640x360 [SAR 1:1 DAR 16:9], 710 kb/s, 30 fps, 30 tbr, 30 tbn (default)\n    Metadata:\n      creation_time   : 2015-08-07T09:13:05.000000Z\n      handler_name    : L-SMASH Video Handler\n      vendor_id       : [0][0][0][0]\n      encoder         : AVC Coding\n  Stream #0:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo, fltp, 112 kb/s (default)\n    Metadata:\n      creation_time   : 2015-08-07T09:13:05.000000Z\n      handler_name    : L-SMASH Audio Handler\n      vendor_id       : [0][0][0][0]\nStream mapping:\n  Stream #0:0 -> #0:0 (h264 (native) -> gif (native))\nPress [q] to stop, [?] for help\nOutput #0, gif, to '/home/user/Desktop/src_clip.gif':\n  Metadata:\n    major_brand     : mp42\n    minor_version   : 0\n    compatible_brands: mp42mp41isomavc1\n    encoder         : Lavf59.27.100\n  Stream #0:0(und): Video: gif, bgr8(pc, gbr/unknown/unknown, progressive), 320x180 [SAR 1:1 DAR 16:9], q=2-31, 200 kb/s, 10 fps, 100 tbn (default)\n    Metadata:\n      creation_time   : 2015-08-07T09:13:05.000000Z\n      handler_name    : L-SMASH Video Handler\n      vendor_id       : [0][0][0][0]\n      encoder         : Lavc59.37.100 gif\nframe=    1 fps=0.0 q=-0.0 size=       0kB time=00:00:00.01 bitrate=   0.0kbits/s speed=0.357x    \nframe=   50 fps=0.0 q=-0.0 Lsize=     275kB time=00:00:04.91 bitrate= 458.4kbits/s speed=47.5x    \nvideo:275kB audio:0kB subtitle:0kB other streams:0kB global headers:0kB muxing overhead: 0.007109%\n",
+        "returncode": 0,
+        "timestamp": 1792962364.679871,
+        "exception_info": ""
+      },
+      "tool_call_id": "call_68033515B77C47DDA7CC174D",
+      "role": "tool"
+    },
+    {
+      "role": "user",
+      "content": "Tool call error:\n\n<error>\nNo tool calls found in the response. Every response MUST include at least one tool call.\n</error>\n\nHere is general guidance on how to submit correct toolcalls:\n\nEvery response needs to use the 'bash' tool at least once to execute commands.\n\nCall the bash tool with your command as the argument:\n- Tool: bash\n- Arguments: {\"command\": \"your_command_here\"}\n\nIf you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`\nwithout any other command.",
+      "extra": {
+        "interrupt_type": "FormatError",
+        "cost": 0.0,
+        "response": {
+          "id": "gen-1792962364-j185wIFuT3gEkk9gF91c",
+          "created": 1792962364,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "The GIF has been created successfully at `/home/user/Desktop/src_clip.gif`.  \nIf you need to tweak the quality, frame rate, or size, you can adjust the `-vf` options in the `ffmpeg` command.  \n\nTask completed.  \n\n`echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "provider_specific_fields": {
+                  "refusal": null,
+                  "reasoning": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "stop"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 66,
+            "prompt_tokens": 4194,
+            "total_tokens": 4260,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 8.1432e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 8.1432e-05,
+              "upstream_inference_prompt_cost": 7.5492e-05,
+              "upstream_inference_completions_cost": 5.94e-06
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        }
+      }
+    },
+    {
+      "content": null,
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "index": 0,
+          "function": {
+            "arguments": "{\"command\":\"echo 'Done'\"}",
+            "name": "bash"
+          },
+          "id": "call_DE23405688D843A3B5C9AF45",
+          "type": "function"
+        }
+      ],
+      "function_call": null,
+      "reasoning_content": "We must include tool call in response. Let's just output the command.",
+      "provider_specific_fields": {
+        "reasoning": "We must include tool call in response. Let's just output the command.",
+        "reasoning_details": [
+          {
+            "type": "reasoning.text",
+            "text": "We must include tool call in response. Let's just output the command.",
+            "format": "unknown",
+            "index": 0
+          }
+        ],
+        "refusal": null
+      },
+      "extra": {
+        "actions": [
+          {
+            "command": "echo 'Done'",
+            "tool_call_id": "call_DE23405688D843A3B5C9AF45"
+          }
+        ],
+        "response": {
+          "id": "gen-1792962372-exFKxneJkwSaJlQtWfcK",
+          "created": 1792962372,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "tool_calls",
+              "index": 0,
+              "message": {
+                "content": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "index": 0,
+                    "function": {
+                      "arguments": "{\"command\":\"echo 'Done'\"}",
+                      "name": "bash"
+                    },
+                    "id": "call_DE23405688D843A3B5C9AF45",
+                    "type": "function"
+                  }
+                ],
+                "function_call": null,
+                "reasoning_content": "We must include tool call in response. Let's just output the command.",
+                "provider_specific_fields": {
+                  "reasoning": "We must include tool call in response. Let's just output the command.",
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "We must include tool call in response. Let's just output the command.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ],
+                  "refusal": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "tool_calls"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 40,
+            "prompt_tokens": 4311,
+            "total_tokens": 4351,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 14,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 8.1198e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 8.1198e-05,
+              "upstream_inference_prompt_cost": 7.7598e-05,
+              "upstream_inference_completions_cost": 3.6e-06
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        },
+        "cost": 0.0,
+        "timestamp": 1792962376.7425146
+      }
+    },
+    {
+      "content": "{\n  \"returncode\": 0,\n  \"output\": \"Done\\n\"\n}",
+      "extra": {
+        "raw_output": "Done\n",
+        "returncode": 0,
+        "timestamp": 1792962376.7528062,
+        "exception_info": ""
+      },
+      "tool_call_id": "call_DE23405688D843A3B5C9AF45",
+      "role": "tool"
+    },
+    {
+      "role": "user",
+      "content": "Tool call error:\n\n<error>\nNo tool calls found in the response. Every response MUST include at least one tool call.\n</error>\n\nHere is general guidance on how to submit correct toolcalls:\n\nEvery response needs to use the 'bash' tool at least once to execute commands.\n\nCall the bash tool with your command as the argument:\n- Tool: bash\n- Arguments: {\"command\": \"your_command_here\"}\n\nIf you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`\nwithout any other command.",
+      "extra": {
+        "interrupt_type": "FormatError",
+        "cost": 0.0,
+        "response": {
+          "id": "gen-1792962376-TUy0OD0yXE2XHjV6LioO",
+          "created": 1792962376,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "I\u2019ve created the 5\u2011second GIF clip starting at 00:03 from `/home/user/Desktop/src.mp4` and saved it as `/home/user/Desktop/src_clip.gif`. The command used was:\n\n```bash\nffmpeg -ss 00:00:03 -t 5 -i /home/user/Desktop/src.mp4 -vf \"fps=10,scale=320:-1:flags=lanczos\" -gifflags -transdiff -y /home/user/Desktop/src_clip.gif\n```\n\nYou can now view `/home/user/Desktop/src_clip.gif` to confirm the result.",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "provider_specific_fields": {
+                  "refusal": null,
+                  "reasoning": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "stop"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 125,
+            "prompt_tokens": 4387,
+            "total_tokens": 4512,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 4096,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 5.3352e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 5.3352e-05,
+              "upstream_inference_prompt_cost": 4.2102e-05,
+              "upstream_inference_completions_cost": 1.125e-05
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "Tool call error:\n\n<error>\nNo tool calls found in the response. Every response MUST include at least one tool call.\n</error>\n\nHere is general guidance on how to submit correct toolcalls:\n\nEvery response needs to use the 'bash' tool at least once to execute commands.\n\nCall the bash tool with your command as the argument:\n- Tool: bash\n- Arguments: {\"command\": \"your_command_here\"}\n\nIf you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`\nwithout any other command.",
+      "extra": {
+        "interrupt_type": "FormatError",
+        "cost": 0.0,
+        "response": {
+          "id": "gen-1792962379-vb9azsnIOaZh1QBlPpDV",
+          "created": 1792962379,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "I\u2019ve created the 5\u2011second GIF starting at 00:03 from the MP4 file using `ffmpeg`.  \nThe GIF is saved to `/home/user/Desktop/src_clip.gif`.\n\n```bash\nffmpeg -ss 00:00:03 -t 5 -i /home/user/Desktop/src.mp4 \\\n       -vf \"fps=10,scale=320:-1:flags=lanczos\" \\\n       -gifflags -transdiff -y /home/user/Desktop/src_clip.gif\n```\n\nNow the output file is ready. If everything looks good, you can finish the task:\n\n```bash\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n```\n",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "reasoning_content": "We need to include tool call in the same message. Let's produce a message with reasoning and tool call.",
+                "provider_specific_fields": {
+                  "reasoning": "We need to include tool call in the same message. Let's produce a message with reasoning and tool call.",
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "We need to include tool call in the same message. Let's produce a message with reasoning and tool call.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ],
+                  "refusal": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "stop"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 168,
+            "prompt_tokens": 4504,
+            "total_tokens": 4672,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 21,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 4096,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 5.9328e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 5.9328e-05,
+              "upstream_inference_prompt_cost": 4.4208e-05,
+              "upstream_inference_completions_cost": 1.512e-05
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        }
+      }
+    },
+    {
+      "role": "user",
+      "content": "Tool call error:\n\n<error>\nNo tool calls found in the response. Every response MUST include at least one tool call.\n</error>\n\nHere is general guidance on how to submit correct toolcalls:\n\nEvery response needs to use the 'bash' tool at least once to execute commands.\n\nCall the bash tool with your command as the argument:\n- Tool: bash\n- Arguments: {\"command\": \"your_command_here\"}\n\nIf you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`\nwithout any other command.",
+      "extra": {
+        "interrupt_type": "FormatError",
+        "cost": 0.0,
+        "response": {
+          "id": "gen-1792962383-D241euTUMBqjtx1CL5ah",
+          "created": 1792962383,
+          "model": "openai/gpt-oss-20b",
+          "object": "chat.completion",
+          "system_fingerprint": null,
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "I\u2019ve generated the GIF using `ffmpeg`.  \nThe command used:\n\n```bash\nffmpeg -ss 00:00:03 -t 5 -i /home/user/Desktop/src.mp4 \\\n       -vf \"fps=10,scale=320:-1:flags=lanczos\" \\\n       -gifflags -transdiff -y /home/user/Desktop/src_clip.gif\n```\n\nThis extracts a 5\u2011second clip starting at 3\u202fs, converts it to a 10\u202ffps GIF, scales it to 320\u202fpx width, and saves it as `/home/user/Desktop/src_clip.gif`.  \n\nNow the file is ready.  \n\n```bash\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n```\n",
+                "role": "assistant",
+                "tool_calls": null,
+                "function_call": null,
+                "reasoning_content": "We need to include tool call in the same message. Let's produce a message with reasoning and tool call.",
+                "provider_specific_fields": {
+                  "reasoning": "We need to include tool call in the same message. Let's produce a message with reasoning and tool call.",
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "text": "We need to include tool call in the same message. Let's produce a message with reasoning and tool call.",
+                      "format": "unknown",
+                      "index": 0
+                    }
+                  ],
+                  "refusal": null
+                }
+              },
+              "provider_specific_fields": {
+                "native_finish_reason": "stop"
+              }
+            }
+          ],
+          "usage": {
+            "completion_tokens": 180,
+            "prompt_tokens": 4621,
+            "total_tokens": 4801,
+            "completion_tokens_details": {
+              "audio_tokens": 0,
+              "reasoning_tokens": 21,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 4096,
+              "video_tokens": 0,
+              "cache_creation_tokens": 0
+            },
+            "cost": 6.2514e-05,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 6.2514e-05,
+              "upstream_inference_prompt_cost": 4.6314e-05,
+              "upstream_inference_completions_cost": 1.62e-05
+            }
+          },
+          "provider": "Darkbloom",
+          "service_tier": null
+        }
+      }
+    },
+    {
+      "role": "exit",
+      "content": "RepeatedFormatError",
+      "extra": {
+        "exit_status": "RepeatedFormatError",
+        "submission": ""
+      }
+    }
+  ],
+  "trajectory_format": "mini-swe-agent-1.1"
+}
