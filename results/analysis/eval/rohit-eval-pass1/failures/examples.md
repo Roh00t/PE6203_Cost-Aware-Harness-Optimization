@@ -177,7 +177,7 @@ No trials.
 
 ## timeout_no_recovery (harness, 0 trials)
 
-No trials with this primary label; secondary label in: v/071-paste-image-docx, v/073-force-quit-frozen-doc, v/074-apa-references-review, v/087-spreadsheet-to-doc-table
+No trials with this primary label; secondary label in: v/071-paste-image-docx, v/074-apa-references-review, v/087-spreadsheet-to-doc-table
 
 ## premature_submit_missing_output (harness, 6 trials)
 

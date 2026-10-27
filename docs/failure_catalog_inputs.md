@@ -19,7 +19,7 @@ Each example below lists its trial folder `T`. Inside it:
 | guardrail_blocked | harness | 0 | 0 | 0 | 1 | 4 |
 | unparsable_tool_call | harness | 30 | 31 | 30 | 23 | 7 |
 | budget_exhausted | harness | 0 | 0 | 0 | 0 | 0 |
-| timeout_no_recovery | harness | 0 | 0 | 0 | 0 | 0 (secondary in 4 V trials) |
+| timeout_no_recovery | harness | 0 | 0 | 0 | 0 | 0 (secondary in 3 V trials) |
 | premature_submit_missing_output | harness | 1 | 0 | 2 | 1 | 2 |
 | wrong_output | model | 2 | 5 | 1 | 7 | 10 |
 | partial_credit | model | 1 | 0 | 1 | 2 | 2 |
@@ -76,7 +76,7 @@ A plainer variant for the text: **B0/040**, where the model wrote three refusals
 
 **Which component.** **C4** timeout recovery (the recipe was given but not followed) and **C3**'s longer timeout (180 s was still too short for this approach).
 
-Do not use V/073 for this type: its two "timeouts" are `pkill -f soffice -9` killing its own shell (rc 137), not real timeouts (bug review, #7).
+V/073 is not in this type: its two "timeouts" are `pkill -f soffice -9` killing its own shell after 0.2 s (rc 137). The harness logs them as `command_timeout`, but the classifier counts a timeout only when the command ran for at least 90% of its limit (bug review, #7).
 
 ### premature_submit_missing_output: B0 / 075-nuclei-locations
 
@@ -131,4 +131,4 @@ Caveat for the text: tasks 074 (0.819) and 076 (0.755) give nearly the same part
 - The gold output is a vertical flip only. A 180° rotation flips both axes, the same mistake as the benchmark's own reference solution (`configs/subset_amendments.json`, `kept_below_reward_1`). On manual review this is a model-level `wrong_output`.
 - The verifier printed nothing, which is why the script can't tell.
 
-21 trials are unclassified for the same reason: 18 tasks' verifiers print no failure reason. Before counting them as model-level or harness-level, review them by hand: filter `trials_classified.csv` on `primary_label = unclassified`.
+21 trials are unclassified for the same reason: 18 tasks' verifiers print no failure reason. Provisional verdicts for all 21 trials, and for the 5 guardrail trials, are in `results/analysis/eval/rohit-eval-pass1/failures/manual_review.md`, pending Isha's check. If accepted: 14 are `wrong_output` and 7 `premature_submit_missing_output`. That gives harness/model splits of B0 35/4, E 31/5, H0 33/5, V 25/12, V-E 13/21.

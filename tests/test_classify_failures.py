@@ -160,6 +160,25 @@ def test_stock_timeout_message_counts_and_torn_event_line_is_skipped(tmp_path):
     assert trial.timeout_unrecovered and trial.n_guardrail_blocks == 1
 
 
+def timed(command: str, took: float, returncode: int = 137) -> list[dict]:
+    sent = 1_000.0
+    messages = step(command, "", returncode, "Command timed out or was killed")
+    messages[0]["extra"]["timestamp"], messages[1]["extra"]["timestamp"] = sent, sent + took
+    return messages
+
+
+def test_self_kill_reported_as_timeout_is_not_a_timeout(tmp_path):
+    start = {"type": "trial_start", "command_timeout": 180}
+    make_trial(tmp_path / "kill", events=[start], messages=timed("pkill -f soffice -9", 0.2) + SUBMITTED)
+    make_trial(tmp_path / "slow", events=[start], messages=timed("python3 convert.py", 180.2) + SUBMITTED)
+    make_trial(tmp_path / "early", events=[start], messages=timed("python3 convert.py", 30.0) + SUBMITTED)
+    make_trial(tmp_path / "stock", events=None, messages=timed("sleep 60", 30.0, -1) + SUBMITTED)
+    assert not only(tmp_path / "kill").timeout_unrecovered
+    assert only(tmp_path / "slow").timeout_unrecovered
+    assert not only(tmp_path / "early").timeout_unrecovered  # a 180 s limit, so 30 s was a kill
+    assert only(tmp_path / "stock").timeout_unrecovered  # stock limit is 30 s
+
+
 def test_verifier_evidence_prefers_pytest_lines_then_assertions_then_last_line():
     assert cf.verifier_failures(WRONG) == ["AssertionError: expected 6 rows, got 5", "assert 5 == 6"]
     assert cf.verifier_failures("log\n" + MISSING + "done\n") == [MISSING.strip()]
