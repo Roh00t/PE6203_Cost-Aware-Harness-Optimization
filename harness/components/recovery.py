@@ -79,10 +79,14 @@ class FailureRecovery(Hook):
                 and returncode != 0
                 and extra.get("origin") != "harness"
             ):
-                self.failures[digest] = self.failures.get(digest, 0) + 1
+                # Count back-to-back failures only: a command in between may have changed the
+                # state (file created, process started), so a later retry is not blind.
+                self.failures = {digest: self.failures.get(digest, 0) + 1}
                 output = str(result.get("output", ""))
                 exception = str(result.get("exception_info", ""))
                 self.last_errors[digest] = (output + ("\n" + exception if exception else ""))[-1000:]
+            elif extra.get("origin") != "harness":
+                self.failures = {}
 
             if returncode in (124, 137):
                 result = _append_harness_text(result, _TIMEOUT_RECOVERY)

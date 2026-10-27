@@ -27,7 +27,9 @@ class JsonlLog:
 
 
 def origin_counts(messages: list[dict]) -> dict[str, int]:
-    counts = dict.fromkeys(("system", "task", "model", "env", "harness"), 0)
+    # "feedback": format-error messages, which the stock loop sends too, so they are not
+    # harness overhead (harness-v1 counted them as "harness").
+    counts = dict.fromkeys(("system", "task", "model", "env", "harness", "feedback"), 0)
     for i, msg in enumerate(messages):
         text = json.dumps(
             {k: v for k, v in msg.items() if k != "extra"}, ensure_ascii=False

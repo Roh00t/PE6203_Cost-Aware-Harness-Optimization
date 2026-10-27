@@ -3,6 +3,8 @@
 import json
 from copy import deepcopy
 
+_SHORTENED = "\n[older observation shortened]"
+
 
 def estimate_tokens(messages: list[dict]) -> int:
     clean = [{k: v for k, v in m.items() if k != "extra"} for m in messages]
@@ -38,7 +40,7 @@ class ContextManager:
             "extra": {
                 **output.get("extra", {}),
                 "full_output": raw,
-                "harness_chars": len(stub),
+                "harness_chars": int(output.get("extra", {}).get("harness_chars", 0)) + len(stub),
             },
         }
 
@@ -54,10 +56,14 @@ class ContextManager:
                     and isinstance(msg.get("content"), str)
                     and len(msg["content"]) > 300
                 ):
-                    msg["content"] = (
-                        msg["content"][:300] + "\n[older observation shortened]"
-                    )
-                    msg.setdefault("extra", {})["harness_chars"] = 29
+                    original = msg["content"]
+                    extra = msg.setdefault("extra", {})
+                    # Harness text is appended at the end, so the kept prefix holds only the
+                    # part of it that starts within the first 300 characters.
+                    harness = int(extra.get("harness_chars", 0))
+                    kept = max(0, min(harness, 300 - (len(original) - harness)))
+                    msg["content"] = original[:300] + _SHORTENED
+                    extra["harness_chars"] = kept + len(_SHORTENED)
         if not middle or estimate_tokens(view) <= self.config.compact_at_tokens:
             return view
         lines = []

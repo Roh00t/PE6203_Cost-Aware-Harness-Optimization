@@ -67,7 +67,7 @@ class BudgetManager:
         self.nudged = set()
 
     def observation(self, result, state, context_tokens):
-        text = f"\n[budget] step {state.step}/{self.config.step_limit} | ${state.spent_usd:.8f}/${self.config.budget_usd:.2f} | context ~{context_tokens} tok | elapsed {state.elapsed_seconds / 60:.1f}/40 min"
+        text = f"\n[budget] step {state.step}/{self.config.step_limit} | ${state.spent_usd:.8f}/${self.config.budget_usd:g} | context ~{context_tokens} tok | elapsed {state.elapsed_seconds / 60:.1f}/40 min"
         for fraction, message in (
             (0.7, "stop exploring; verify outputs"),
             (0.9, "submit now if outputs exist"),

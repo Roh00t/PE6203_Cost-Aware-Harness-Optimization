@@ -57,7 +57,9 @@ def _task_sources(tasks_root: Path) -> tuple[set[str], set[str]]:
 
 
 def _target_files(repo_root: Path) -> Iterable[Path]:
-    targets = (repo_root / "harness", repo_root / "configs" / "harness", repo_root / "agent_instructions.md")
+    # configs/models holds the system, instance and format-error templates the model reads.
+    targets = (repo_root / "harness", repo_root / "configs" / "harness", repo_root / "configs" / "models",
+               repo_root / "agent_instructions.md")
     for target in targets:
         if target.is_file():
             yield target
@@ -71,10 +73,8 @@ def find_leaks(repo_root: Path, tasks_root: Path) -> list[Leak]:
     task_ids, filenames = _task_sources(tasks_root)
     leaks: list[Leak] = []
     for path in _target_files(repo_root):
-        try:
-            contents = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
+        # Not UTF-8 is no reason to skip a file: a task ID in Latin-1 text is still a leak.
+        contents = path.read_bytes().decode("utf-8", errors="replace")
         relative_path = path.relative_to(repo_root)
         for line_number, line in enumerate(contents.splitlines(), start=1):
             for task_id in task_ids:

@@ -1,7 +1,7 @@
 # Guardrails
 
 **PE6203 CA2 · Group Project 5** · Safety and execution boundaries for the cost-aware harness.
-Status: frozen with `harness-v1` (`6c87103`, 2026-10-21) after the dev false-positive review (§7). §8 maps the controls to the course frameworks.
+Status: frozen with `harness-v1` (`6c87103`, 2026-10-21) after the dev false-positive review (§7). **harness-v1.1 (branch `bug-fixes`, pending Rohit's approval)** revises the rules marked v1.1 below after the eval-phase review (§7.2, `docs/bug_fixes.md`); pass-1 results used v1. §8 maps the controls to the course frameworks.
 
 This document defines what the harness blocks, limits and logs, and the exact text the model sees when that happens. Architecture context: [`system_architecture.md`](system_architecture.md). Config IDs (B0, E, H0, Ck, V) are defined in [§2 of that document](system_architecture.md#2-configurations).
 
@@ -61,8 +61,8 @@ The harness checks each proposed command *before* execution. **Always-on** rules
 **Matching.**
 - `G-*` rules match the full command text, heredoc bodies included (safety first; false positives are logged).
 - `U-*` rules match the command with heredoc bodies removed. A Python file that merely *contains* the word `vim` is not an editor launch.
-- First match wins, `G-*` before `U-*`.
-- Patterns are Python `re` with `re.MULTILINE`. The tables are abridged; the authoritative patterns and their unit tests live in `harness/guardrails.py` (planned). "Segment start" below means `(^|[;&|]\s*|\$\(\s*)`.
+- The first **blocking** match wins, `G-*` before `U-*`. A log-only match (G-SEC-01, U-INT-05) is recorded only if nothing blocks, so it never hides a block (v1.1; in v1 a G-SEC-01 match stopped the check).
+- Patterns are Python `re` with `re.MULTILINE`. The tables are abridged; the authoritative patterns and their unit tests live in `harness/guardrails.py` and `tests/test_guardrails.py`. "Segment start" below means `(^\s*|[;&|]\s*|\$\(\s*)`; "command start" is the same without a single `|`.
 
 **Actions.**
 - **block:** not executed; the message below is returned as the observation; counts as a step.
@@ -74,27 +74,27 @@ The harness checks each proposed command *before* execution. **Always-on** rules
 
 | ID | Catches | Pattern (abridged) | Action |
 |---|---|---|---|
-| G-DST-01 | Recursive delete of `/`, `~`, `$HOME` or `/app` (the task's input root) | `\brm\s+(-\w*[rR]\w*\s+)+(--no-preserve-root\s+)?(/\*?\|~/?\|\$HOME/?\|/app/?\*?)(?=\s\|;\|&\|\\|\|$)` | block |
-| G-DST-02 | Filesystem or device destruction | `\bmkfs(\.\w+)?\b`, `\bdd\b[^;&\|]*\bof=/dev/`, `\bwipefs\b`, `>\s*/dev/[sh]d[a-z]` | block |
+| G-DST-01 | Recursive delete of `/`, `~`, `$HOME` or `/app` (the task's input root), any flag order or long form, optional `--` and quotes (v1.1: v1 missed `rm -rf /app`, `rm -r -f /`, `rm -rf ~/*`) | `\brm\b` with a recursive flag (`-…r…`, `--recursive`), then a target `/`, `~`, `$HOME`, `${HOME}` or `/app`, optionally `/` and `*`, ending the word | block |
+| G-DST-02 | Filesystem or device destruction | `\bmkfs(\.\w+)?\b`, `\bdd\b[^;&\|]*\bof=/dev/` except `/dev/null`, `zero`, `stdout`, `stderr`, `fd/` (v1.1), `\bwipefs\b`, `>\s*/dev/[sh]d[a-z]` | block |
 | G-DST-03 | Fork bombs and process-wide kills | `:\(\)\s*\{\s*:\s*\\|\s*:\s*&\s*\}`, `\bkill\s+-9\s+-1\b`, `\bpkill\s+-9\s+-u\b` | block |
-| G-DST-04 | Power or init state | `\b(shutdown\|reboot\|halt\|poweroff)\b`, `\bsystemctl\s+(poweroff\|reboot\|halt)\b`, `\binit\s+[06]\b` | block |
+| G-DST-04 | Power or init state | segment start + `(sudo\s+)?(\S*/)?(shutdown\|reboot\|halt\|poweroff)\b` (v1.1: command position only; v1 matched the word anywhere, e.g. `logging.shutdown()`), `\bsystemctl\s+(poweroff\|reboot\|halt)\b`, `\binit\s+[06]\b` | block |
 | G-DST-05 | Permission or ownership sweeps at `/` | `\bch(mod\|own)\s+-R\s+\S+\s+/(?=\s\|$)` | block |
-| G-INT-01 | Grader paths (reward hacking) | `(?<![\w.])/(tests\|solution\|oracle)(?=/\|\s\|$\|['"])`, `/logs/verifier\b`, `\btest_outputs\.py\b`, `\bsolve\.sh\b` | block |
-| G-SEC-01 | Secret probing, often the visible half of a prompt injection | segment start + `(printenv\|env)\s*($\|[;&\|])`, `/proc/\d+/environ`, `\$\{?\w*(API_KEY\|TOKEN\|SECRET)` | log |
+| G-INT-01 | Grader paths (reward hacking) | `(?<![\w.~])/(tests\|solution\|oracle)(?=/\|\s\|$\|['";\|&)*])` (v1.1: also before `;`, `\|`, `&`, `)`, `*`; not `~/tests`), `/logs/verifier\b`, `\btest_outputs\.py\b`, `\bsolve\.sh\b`. Also applied to the `path` of C2 file tools (v1.1) | block |
+| G-SEC-01 | Secret probing, often the visible half of a prompt injection | segment start + `(printenv\|env)\s*($\|[;&\|])`, `/proc/\d+/environ`, `\$\{?\w*(API_KEY\|TOKEN\|SECRET)(_\w*)?(?!\w)` (v1.1: not `${MAX_TOKENS}`) | log |
 
 ### 3.2 C2 usability rules
 
 | ID | Catches | Pattern (abridged) | Action |
 |---|---|---|---|
-| U-INT-01 | Full-screen editors, pagers, monitors | segment start + `(sudo\s+)?(vi\|vim\|nvim\|nano\|emacs\|pico\|less\|more\|top\|htop\|man\|watch)\b` | block |
-| U-INT-02 | Follow mode, which never exits | `\btail\s+(-\w*f\w*\|--follow)\b`, `\bjournalctl\b[^;&\|]*\s-f\b` | block |
-| U-INT-03 | Bare REPLs waiting on stdin | segment start + `(python3?\|ipython\|node\|irb\|sqlite3\|psql\|mysql)\s*(?=$\|[;&\|])` | block |
-| U-INT-04 | Password prompts that hang | `\b(ssh\|scp)\b(?![^;&\|]*BatchMode=yes)` | block |
+| U-INT-01 | Full-screen editors, pagers, monitors | segment start + `(sudo\s+)?(vi\|vim\|nvim\|nano\|emacs\|pico\|less\|more\|htop\|man\|watch\|top)` not followed by `[\w.-]`; `top` not in batch mode (`-b`) (v1.1) | block |
+| U-INT-02 | Follow mode, which never exits | per command segment: `tail … -f/-F/--follow` or `journalctl … -f…/--follow`, unless the segment starts with `timeout` (v1.1: v1 missed `tail -F`, `tail -n 50 -f`, `journalctl --follow` and blocked bounded `timeout N tail -f`) | block |
+| U-INT-03 | Bare REPLs waiting on stdin | command start + `(python3?\|ipython\|node\|irb\|sqlite3\|psql\|mysql)\s*(?=$\|[;&\|])` (v1.1: not after a single pipe, which feeds stdin) | block |
+| U-INT-04 | Password prompts that hang | `(?<![\w.-])(ssh\|scp)(?![\w./-])(?![^;&\|]*BatchMode=yes)` (v1.1: not `~/.ssh` paths or `ssh-keygen`) | block |
 | U-INT-05 | `sudo` without `-n` (narrowed from U-INT-04 after the dev review, 2026-10-21: task containers grant passwordless sudo, so blocking it rejected a correct `sudo useradd …`) | `\bsudo\b(?!\s+-n\b)`, checked after every other rule | log |
 | U-FMT-01 | Empty command | `^\s*$` | block |
 | U-FMT-02 | Over-long command | length > 8,000 characters | block |
-| U-FMT-03 | Unterminated heredoc | `<<-?\s*['"]?(\w+)['"]?` with no later line equal to the delimiter | block |
-| U-FMT-04 | Submit combined with other work | contains `COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` but is not exactly `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` | block |
+| U-FMT-03 | Unterminated heredoc | on shell lines only (heredoc bodies and one-line quoted strings skipped): `<<-?` + a quoted delimiter or one starting like a word, not `<<<`, with no later line equal to the delimiter, optionally followed by the closing quote of an enclosing `bash -c "…"` (v1.1: v1 rejected 13 valid commands in eval) | block |
+| U-FMT-04 | Submit combined with other work | outside heredoc bodies, contains `COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` but is not `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` (quotes, extra spaces or a `bash -c "…"` wrapper allowed in v1.1) | block |
 | U-FMT-05 | More than one tool call in a response | count > 1 | run first, note the rest |
 
 ### 3.3 Exact messages returned to the model
@@ -133,7 +133,7 @@ Messages are short on purpose (they are billed tokens) and always say what to do
 | Output read per command | 1 MB | 1 MB | Rest dropped, `[output truncated at 1 MB]` |
 | Per-task spend | None (stock default); key credit limit, plus a pilot-based safety ceiling if needed ([architecture §6](system_architecture.md#6-budgets-and-limits)) | B_task (C3) | `exit_status = CostCapExceeded` |
 | Per-job spend | Job budget + 20% | same | Gateway refuses further calls; remaining trials marked `budget_abort` (rerun later, never scored as failures) |
-| API errors (429, 5xx, timeout) | 3 retries, backoff 2/4/8 s | same | Then infra error → trial rerun policy |
+| API errors (429, 5xx, timeout) | Up to 10 attempts, exponential backoff 4–60 s with jitter, like stock mini-swe-agent (v1.1; v1: 3 retries at 2/4/8 s, which crashed two V-E trials). A 429 is not billed, so it releases its spend reservation (v1.1) | same | Then infra error → trial rerun policy |
 | OpenRouter key | Credit limit set in the dashboard | n/a | Provider-side hard stop: the last line of defence |
 | Process supervision | No `restart:` policy anywhere | n/a | A crashed run stays crashed (`docker-compose.yml`) |
 
@@ -191,6 +191,20 @@ Reviewed: every `guardrail_block` event in the dev logs, i.e. Abin's C1/C3 runs 
 | All other rules | 0 | n/a | Unchanged |
 
 The rule table above is frozen with `harness-v1`. **Eval-phase review:** after the eval runs, count `guardrail_block` and `guardrail_log` events per rule per configuration (`grep -h '"guardrail_' jobs/<run>/*/*/*/agent/events.jsonl`), and check every block in a failed trial during failure classification. Report "0 blocks" explicitly where none occur. Because U-INT-05 now lets `sudo` through, a trial that hangs on a sudo password would surface as a `command_timeout` event (30 s, or 180 s with C3), not a hang.
+
+### 7.2 Eval-phase review result (2026-10-27) and harness-v1.1
+
+Reviewed: every `guardrail_block` and `guardrail_log` event in all 11 configurations of `results/eval/rohit-eval-pass1/` (438 trials). Each blocked command was taken in full from its trajectory and run under bash with stub programs. Full tables: [`docs/guardrail_eval_review.md`](docs/guardrail_eval_review.md).
+
+| Rule | Eval events (harness-v1) | Legitimate? | Outcome |
+|---|---|---|---|
+| U-FMT-03 | 13 blocks: V 5, V-E 7, H0+C2 1 | **All 13 false positives**: heredocs nested in `bash -c "…"` (closing line `PY"`), and `<<` inside a closed heredoc body or quoted string (Ruby append) | One trial plausibly affected (V/071). **Fixed in v1.1** (BF-01) |
+| U-INT-03 | 1 block (H0+C2/099) | False positive: `… \| python3` reads a pipe | **Fixed in v1.1** (BF-03) |
+| U-FMT-04 | 2 blocks (V-E/040, V-E/074) | 1 correct (submit chained after `zip`), 1 harmless over-strict (`bash -c "echo COMPLETE…"`) | v1.1 allows the quoted and `bash -c` forms (BF-22) |
+| U-INT-05 | 3 logs | All `sudo apt-get …`; each returned `sudo: command not found` (these eval images have no `sudo`) | No hang |
+| All G-rules | 0 in every configuration; an offline replay over all 3,094 commands, B0 and E included, also 0 | n/a | Direct tests found latent gaps, fixed in v1.1: G-DST-01 allowed `rm -rf /app` (BF-13), G-DST-04 blocked `logging.shutdown()` (BF-12), a log-only G-SEC-01 match hid later blocks (BF-14), G-INT-01 edges (BF-15) |
+
+A replay of all 3,094 eval commands through the v1.1 rules blocks only the correct U-FMT-04 case and logs the same 3 `sudo` calls. Pass-1 results used v1 and are not rerun; the U-FMT-03 false positives are reported as harness-level failures.
 
 ---
 

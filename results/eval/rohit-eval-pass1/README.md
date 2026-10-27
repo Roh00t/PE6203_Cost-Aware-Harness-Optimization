@@ -20,9 +20,9 @@ Infrastructure failures that were rerun are **kept** as archived attempts (folde
 
 | Cause | Trials | Fix |
 |---|---|---|
-| B0/E crashed on their first model call: `ModuleNotFoundError: No module named 'mcp'`. Harbor installs stock mini-swe-agent 2.4.6 in the container with an unpinned `uv tool install`, and a litellm release after the 13 Oct pilot imports `mcp` without installing it | 19 (all B0/E trials of the first 9 tasks) | Runner passes `--ae UV_EXCLUDE_NEWER=2026-10-13` to B0/E only, so the container installs the dependency snapshot the dev pilot validated. Agent code and settings stay stock. See `CLAUDE.md`, third freeze exception |
+| B0/E crashed on their first model call: `ModuleNotFoundError: No module named 'mcp'`. Harbor installs stock mini-swe-agent 2.4.6 in the container with an unpinned `uv tool install`, and a litellm release after the 13 Oct pilot imports `mcp` without installing it | 18 (all B0/E trials of the first 9 tasks) | Runner passes `--ae UV_EXCLUDE_NEWER=2026-10-13` to B0/E only, so the container installs the dependency snapshot the dev pilot validated. Agent code and settings stay stock. See `CLAUDE.md`, third freeze exception |
 | Docker could not reach Docker Hub (network drop) while building task images | 7 (075 in all pass-1 configurations, 074 in V and V-E) | Rerun |
-| OpenRouter rate limit exhausted the gateway's retries | 1 (077 in V-E) | Rerun |
+| OpenRouter rate limit exhausted the gateway's retries (3 retries over about 14 s in harness-v1; widened in v1.1, `docs/bug_fixes.md` BF-11) | 2 (011 and 077 in V-E) | Rerun |
 | Run stopped by hand during the fix above | 1 (037 in B0) | Rerun |
 
 ## Results
@@ -54,14 +54,14 @@ The full harness on the cheap model (V) is clearly better than the default harne
 
 | Config | Component | Tasks paired with H0 | Mean reward | Δ vs H0 | 95 % CI | W / T / L | Known cost per task |
 |---|---|---|---|---|---|---|---|
-| H0+C0 | Task-appropriate prompt | 38 | 0.166 | +0.046 | 0.000 to +0.110 | 4 / 34 / 0 | ≈ $0.00033 (38 tasks; 2 trials without a call log) |
+| H0+C0 | Task-appropriate prompt | 38 | 0.166 | +0.046 | 0.000 to +0.110 | 4 / 34 / 0 | ≥ $0.00033 (38 tasks; 2 trials without a call log; 1 rate-limited call of unknown cost) |
 | H0+C1 | Context management | 40 | 0.079 | −0.052 | −0.143 to +0.029 | 2 / 34 / 4 | ≥ $0.00077 |
 | H0+C2 | Tool interface and validation | 40 | 0.176 | +0.046 | −0.046 to +0.137 | 4 / 35 / 1 | ≥ $0.00191 |
 | H0+C3 | Budget caps and awareness | 40 | 0.143 | +0.013 | −0.041 to +0.079 | 2 / 37 / 1 | $0.00077 |
 | H0+C4 | Failure recovery | 40 | 0.118 | −0.012 | −0.092 to +0.063 | 2 / 36 / 2 | $0.00095 |
 | H0+C5 | Pre-submission gate | 40 | 0.106 | −0.024 | −0.129 to +0.083 | 3 / 33 / 4 | $0.00111 |
 
-Reading, with one run per configuration and wide intervals: **C0 (the prompt) is the clearest single gain**: +0.046 with no losses, and it roughly halves the number of model calls (247 against H0's 496), so it is also the cheapest configuration per task. **C2 (tools)** gives a similar reward gain at about twice H0's cost, because its longer format-error allowance keeps runs going. **C3** is neutral on reward and slightly cheaper. **C1, C4 and C5** are slightly negative alone; C1's drop (context condensing) is the one to inspect in the trajectories. The full harness V (+0.033 over H0) gains less than C0, C2 or C3 alone (+0.046, +0.046, +0.013), so the components overlap or interfere rather than add up; C1's negative effect may be part of the reason. No single ablation is significant at 95 %.
+Reading, with one run per configuration and wide intervals: **C0 (the prompt) is the clearest single gain**: +0.046 with no losses, paired over the 38 tasks it completed (H0 scores 0.120 on them), and it roughly halves the number of model calls (247 against H0's 470 on the same 38 tasks), so it is also the cheapest configuration per task. **C2 (tools)** gives a similar reward gain at about twice H0's cost, because its longer format-error allowance keeps runs going. **C3** is neutral on reward and slightly cheaper. **C1, C4 and C5** are slightly negative alone; C1's drop (context condensing) is the one to inspect in the trajectories. The full harness V (+0.033 over H0) gains less than C0 or C2 alone (+0.046 each), so the positive components overlap; it gains more than the six single-component changes added together (+0.016), so the negative ones do not simply subtract either. Only C0's interval excludes zero, and only just (lower bound 0.0001, shown as 0.000); no other single ablation is significant at 95 %. (Corrected 2026-10-27, `docs/bug_fixes.md` BF-35, BF-37, BF-40.)
 
 ### Pareto frontier and cost policy
 
@@ -71,7 +71,7 @@ Reading, with one run per configuration and wide intervals: **C0 (the prompt) is
 
 H0+C0 is not on either frontier yet only because it has 38 of 40 tasks; after the two reruns it is likely to be (high reward, lowest cost).
 
-**Harness overhead:** no harness-made model calls ($0). Harness-injected prompt text (status lines, nudges, recovery and gate messages) is estimated at about 17 % of V's and 16 % of V-E's known cost.
+**Harness overhead:** no harness-made model calls ($0). Harness-injected prompt text (status lines, nudges, recovery and gate messages) is estimated at about 13 % of V's known cost ($0.0061 per run) and 14 % of V-E's ($0.0126). Format-error feedback, which the stock loop sends too, is reported separately ($0.0021 and $0.0025) and H0's overhead is $0. Corrected 2026-10-27 (`docs/bug_fixes.md` BF-34): the first estimate (17 % and 16 %) counted that feedback as harness text.
 
 ### Still open
 

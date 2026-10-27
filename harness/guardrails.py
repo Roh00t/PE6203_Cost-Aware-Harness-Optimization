@@ -32,18 +32,25 @@ class _Rule:
     captures: tuple[str, ...] = ()
 
 
-_SEGMENT_START = r"(?:^|[;&|]\s*|\$\(\s*)"
+_SEGMENT_START = r"(?:^\s*|[;&|]\s*|\$\(\s*)"
+# Like _SEGMENT_START but not after a single pipe: an interpreter reading a pipe never waits.
+_COMMAND_START = r"(?:^\s*|(?:;|&&?|\|\|)\s*|\$\(\s*)"
 _RULES = (
     _Rule(
         "G-DST-01",
-        (re.compile(r"\brm\s+(?:-\w*[rR]\w*\s+)+(?:--no-preserve-root\s+)?(?:/\*?|~/?|\$HOME/?|/app/\*?)(?=\s|[;&|\\]|$)", _FLAGS),),
+        # Any flag order or long form, as long as one flag is recursive; optional `--` and quotes.
+        (re.compile(
+            r"\brm\b(?=[^;&|\n]*\s(?:-[A-Za-z]*[rR][A-Za-z]*|--recursive)(?=\s))"
+            r"[^;&|\n]*\s[\"']?(?:/|~|\$HOME|\$\{HOME\}|/app)/?\*?[\"']?(?=\s|[;&|\\)]|$)",
+            _FLAGS,
+        ),),
         "BLOCKED [{rule_id}]: this command could destroy the environment and was not run. Delete or modify only the specific files the task requires.",
     ),
     _Rule(
         "G-DST-02",
         tuple(re.compile(pattern, _FLAGS) for pattern in (
             r"\bmkfs(?:\.\w+)?\b",
-            r"\bdd\b[^;&|]*\bof=/dev/",
+            r"\bdd\b[^;&|]*\bof=/dev/(?!(?:null|zero|stdout|stderr)\b|fd/)",
             r"\bwipefs\b",
             r">\s*/dev/[sh]d[a-z]",
         )),
@@ -61,7 +68,8 @@ _RULES = (
     _Rule(
         "G-DST-04",
         tuple(re.compile(pattern, _FLAGS) for pattern in (
-            r"\b(?:shutdown|reboot|halt|poweroff)\b",
+            # Only in command position: `logging.shutdown()` or "a reboot is required" is not one.
+            _SEGMENT_START + r"(?:sudo\s+)?(?:\S*/)?(?:shutdown|reboot|halt|poweroff)\b",
             r"\bsystemctl\s+(?:poweroff|reboot|halt)\b",
             r"\binit\s+[06]\b",
         )),
@@ -75,7 +83,7 @@ _RULES = (
     _Rule(
         "G-INT-01",
         tuple(re.compile(pattern, _FLAGS) for pattern in (
-            r"(?<![\w.])/(?:tests|solution|oracle)(?=/|\s|$|['\"])",
+            r"(?<![\w.~])/(?:tests|solution|oracle)(?=/|\s|$|['\";|&)*])",
             r"/logs/verifier\b",
             r"\btest_outputs\.py\b",
             r"\bsolve\.sh\b",
@@ -87,37 +95,41 @@ _RULES = (
         tuple(re.compile(pattern, re.MULTILINE) for pattern in (
             _SEGMENT_START + r"(?:printenv|env)\s*(?=$|[;&|])",
             r"/proc/\d+/environ",
-            r"\$\{?\w*(?:API_KEY|TOKEN|SECRET)\}?",
+            # The secret word must end the name or a `_…` part of it: not ${MAX_TOKENS}.
+            r"\$\{?\w*(?:API_KEY|TOKEN|SECRET)(?:_\w*)?(?!\w)\}?",
         )),
         "",
         action="log",
     ),
     _Rule(
         "U-INT-01",
-        (re.compile(_SEGMENT_START + r"(?:sudo\s+)?(?P<program>vi|vim|nvim|nano|emacs|pico|less|more|top|htop|man|watch)\b", _FLAGS),),
+        # Not a longer name (watch-files.sh) and not top in batch mode (top -b).
+        (re.compile(
+            _SEGMENT_START + r"(?:sudo\s+)?(?P<program>vi|vim|nvim|nano|emacs|pico|less|more|htop|man|watch"
+            r"|top(?![^;&|\n]*\s-\w*b))(?![\w.-])",
+            _FLAGS,
+        ),),
         "BLOCKED [{rule_id}]: '{program}' is interactive and would hang. Read with cat/head/sed -n, edit with sed, python, or cat <<'EOF' > file.",
         c2_only=True,
         captures=("program",),
     ),
     _Rule(
         "U-INT-02",
-        tuple(re.compile(pattern, _FLAGS) for pattern in (
-            r"\btail\s+(?:-\w*f\w*|--follow)\b",
-            r"\bjournalctl\b[^;&|]*\s-f\b",
-        )),
+        (),  # checked per segment by _follow_mode, so a `timeout N` prefix can exempt it
         "BLOCKED [U-INT-02]: follow mode never exits. Use 'tail -n 50 FILE' and run it again to poll.",
         c2_only=True,
     ),
     _Rule(
         "U-INT-03",
-        (re.compile(_SEGMENT_START + r"(?P<program>python3?|ipython|node|irb|sqlite3|psql|mysql)\s*(?=$|[;&|])", _FLAGS),),
+        (re.compile(_COMMAND_START + r"(?P<program>python3?|ipython|node|irb|sqlite3|psql|mysql)\s*(?=$|[;&|])", _FLAGS),),
         "BLOCKED [U-INT-03]: a bare '{program}' waits for input. Use '{program} -c \"...\"', '{program} script', or pipe input in.",
         c2_only=True,
         captures=("program",),
     ),
     _Rule(
         "U-INT-04",
-        (re.compile(r"\b(?:ssh|scp)\b(?![^;&|]*BatchMode=yes)", _FLAGS),),
+        # The program itself, not ~/.ssh paths or ssh-keygen.
+        (re.compile(r"(?<![\w.-])(?:ssh|scp)(?![\w./-])(?![^;&|]*BatchMode=yes)", _FLAGS),),
         "BLOCKED [U-INT-04]: this would wait for a password. Use '-o BatchMode=yes' so it fails fast instead.",
         c2_only=True,
     ),
@@ -156,8 +168,35 @@ _RULES = (
     ),
 )
 
-_HEREDOC_START = re.compile(r"<<(-?)[ \t]*(['\"]?)(\w+)\2")
+# Not a here-string (<<<); an unquoted delimiter must start like a word, so arithmetic
+# shifts such as $(( 1 << 3 )) are not heredocs.
+_HEREDOC_START = re.compile(r"(?<!<)<<(?!<)(-?)[ \t]*(?:(['\"])(\w+)\2|([A-Za-z_]\w*))")
+# Quoted strings on one line (other than a quoted heredoc delimiter) are data, not shell syntax.
+_QUOTED = re.compile(r"(<<-?[ \t]*(['\"])\w+\2)|'[^'\n]*'|\"(?:\\.|[^\"\\\n])*\"")
 _SUBMIT = "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
+# The submission on its own: optional quotes around the sentinel or around a `bash -c` wrapper.
+_SUBMIT_ALONE = re.compile(
+    r"^\s*(?:bash\s+-l?c\s+)?([\"']?)\s*echo\s+([\"']?)" + _SUBMIT + r"\2\s*\1\s*$"
+)
+_FOLLOW = (
+    re.compile(r"\btail\b.*\s(?:-\w*[fF]\w*|--follow\b)"),
+    re.compile(r"\bjournalctl\b.*\s(?:-\w*f\w*|--follow\b)"),
+)
+
+
+def _heredocs(line: str):
+    """Heredoc starts on a shell line, ignoring `<<` inside one-line quoted strings."""
+    shell = _QUOTED.sub(lambda match: match.group(1) or "''", line)
+    for match in _HEREDOC_START.finditer(shell):
+        yield match.group(3) or match.group(4), match.group(1) == "-"
+
+
+def _closes(line: str, delimiter: str, strip_tabs: bool) -> bool:
+    candidate = line.rstrip("\r\n")
+    if strip_tabs:
+        candidate = candidate.lstrip("\t")
+    # Nested in bash -c "...", the delimiter line also carries the closing quote.
+    return candidate.rstrip("\"')") == delimiter
 
 
 def strip_heredoc_bodies(command: str) -> str:
@@ -168,38 +207,41 @@ def strip_heredoc_bodies(command: str) -> str:
     while index < len(lines):
         line = lines[index]
         kept.append(line)
-        delimiters = [
-            (match.group(3), match.group(1) == "-")
-            for match in _HEREDOC_START.finditer(line)
-        ]
         index += 1
-        for delimiter, strip_tabs in delimiters:
+        for delimiter, strip_tabs in _heredocs(line):
             while index < len(lines):
-                body_line = lines[index]
                 index += 1
-                terminator = body_line.rstrip("\r\n")
-                if strip_tabs and terminator.startswith("\t"):
-                    terminator = terminator.lstrip("\t")
-                if terminator == delimiter:
+                if _closes(lines[index - 1], delimiter, strip_tabs):
                     break
     return "".join(kept)
 
 
 def _unterminated_heredoc(command: str) -> str | None:
+    """Scan shell lines only: skip each heredoc's body once its delimiter line is found."""
     lines = command.splitlines()
-    for index, line in enumerate(lines):
-        matches = list(_HEREDOC_START.finditer(line))
-        for match in matches:
-            delimiter = match.group(3)
-            closed = False
-            for body_line in lines[index + 1 :]:
-                candidate = body_line.lstrip("\t") if match.group(1) else body_line
-                if candidate == delimiter:
-                    closed = True
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        index += 1
+        for delimiter, strip_tabs in _heredocs(line):
+            while index < len(lines):
+                index += 1
+                if _closes(lines[index - 1], delimiter, strip_tabs):
                     break
-            if not closed:
+            else:
                 return delimiter
     return None
+
+
+def _follow_mode(command: str) -> bool:
+    """tail/journalctl in follow mode, unless the segment is bounded by `timeout N`."""
+    for segment in re.split(r"[;&|\n]+", command):
+        segment = segment.strip()
+        if re.match(r"(?:sudo\s+)?timeout\b", segment):
+            continue
+        if any(pattern.search(segment) for pattern in _FOLLOW):
+            return True
+    return False
 
 
 def check_extra_tool_calls(tool_call_count: int) -> GuardrailResult | None:
@@ -217,7 +259,11 @@ def check_extra_tool_calls(tool_call_count: int) -> GuardrailResult | None:
 
 
 def check_command(command: str, *, c2_enabled: bool = False) -> GuardrailResult:
-    """Return the first matching rule; G rules always precede C2 rules."""
+    """Return the first blocking rule (G rules before C2 rules), else the first log rule.
+
+    A log-only match never hides a later block: checking continues after it.
+    """
+    logged: GuardrailResult | None = None
     for rule in _RULES:
         if rule.c2_only and not c2_enabled:
             continue
@@ -231,8 +277,12 @@ def check_command(command: str, *, c2_enabled: bool = False) -> GuardrailResult:
             if delimiter is None:
                 continue
             values = {"delim": delimiter}
-        elif rule.rule_id == "U-FMT-04" and _SUBMIT in command:
-            if command.strip() == f"echo {_SUBMIT}":
+        elif rule.rule_id == "U-FMT-04" and _SUBMIT in candidate:
+            if _SUBMIT_ALONE.match(candidate):
+                continue
+            values = {}
+        elif rule.rule_id == "U-INT-02":
+            if not _follow_mode(candidate):
                 continue
             values = {}
         elif rule.rule_id in {"U-FMT-01", "U-FMT-02", "U-FMT-04"}:
@@ -246,5 +296,7 @@ def check_command(command: str, *, c2_enabled: bool = False) -> GuardrailResult:
                 continue
             values = {name: match.group(name) for name in rule.captures}
         message = rule.message.format(rule_id=rule.rule_id, **values) if rule.message else None
-        return GuardrailResult(rule.rule_id, rule.action, message)
-    return GuardrailResult(None, "allow")
+        if rule.action != "log":
+            return GuardrailResult(rule.rule_id, rule.action, message)
+        logged = logged or GuardrailResult(rule.rule_id, rule.action, message)
+    return logged or GuardrailResult(None, "allow")

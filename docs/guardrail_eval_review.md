@@ -1,6 +1,6 @@
 # Guardrail review: eval phase
 
-Asmitha, 2026-10-27. `guardrails.md` §7.1 promises this review after the eval runs: rule counts per configuration, and a hand check of every block in a failed trial. It covers all 11 configurations in `results/eval/rohit-eval-pass1/`, passes 1–3, and excludes archived infrastructure attempts (`<task>.errored-*`, `<task>.interrupted-*`). Pass 1 was already reviewed in `docs/harness_bug_review.md` (§1–§3). This review adds the ablation passes, a bash-level check of every blocked command, and a check of what each block actually changed.
+Asmitha, 2026-10-27. **Update:** every defect below is fixed on branch `bug-fixes` (harness-v1.1, pending Rohit's approval; `docs/bug_fixes.md`), and `guardrails.md` §7.2 records this review. `guardrails.md` §7.1 promises this review after the eval runs: rule counts per configuration, and a hand check of every block in a failed trial. It covers all 11 configurations in `results/eval/rohit-eval-pass1/`, passes 1–3, and excludes archived infrastructure attempts (`<task>.errored-*`, `<task>.interrupted-*`). Pass 1 was already reviewed in `docs/harness_bug_review.md` (§1–§3). This review adds the ablation passes, a bash-level check of every blocked command, and a check of what each block actually changed.
 
 ## 1. Rule counts per configuration
 

@@ -1,6 +1,7 @@
 """Host model gateway using the same LiteLLM formatting as stock mini-swe-agent."""
 
 import json
+import random
 import threading
 import time
 from copy import deepcopy
@@ -18,6 +19,16 @@ from harness.telemetry import origin_counts
 # waits up to 6000 s, and a trial cancelled by Harbor's timeout keeps its worker thread (and the
 # process) alive until the in-flight request returns.
 REQUEST_TIMEOUT_S = 600
+# Retries for 429, 5xx, timeouts and connection errors. The window matches stock mini-swe-agent
+# (tenacity: 10 attempts, exponential 4-60 s), so H0 is not more fragile than B0 under rate
+# limits; jitter keeps parallel trials from retrying in lockstep.
+MAX_ATTEMPTS = 10
+
+
+def backoff_seconds(attempt: int) -> float:
+    delay = min(60.0, 4.0 * 2**attempt)
+    return random.uniform(delay / 2, delay)
+
 
 class UsageError(RuntimeError):
     """Unknown cost is an infrastructure error, never silently free."""
@@ -151,7 +162,7 @@ class OpenRouterGateway(LitellmModel):
             )
         prepared = self._prepare_messages_for_api(messages)
         origins = origin_counts(messages)
-        for attempt in range(4):
+        for attempt in range(MAX_ATTEMPTS):
             if self.stop_event.is_set():
                 raise RuntimeError("Trial cancelled")
             reserve = self.request_reserve(prepared)
@@ -199,11 +210,16 @@ class OpenRouterGateway(LitellmModel):
                     or (isinstance(status, int) and 500 <= status < 600)
                     or isinstance(error, (litellm.Timeout, litellm.APIConnectionError))
                 )
-                # A failed attempt may have been billed; do not invent zero usage.
+                # A failed attempt may have been billed; do not invent zero usage. A 429 is
+                # rejected before generation and not billed, so it releases its reservation.
                 self.usage_complete = False
-                self.unknown_reserved += reserve
+                if status == 429:
+                    if self.job_ledger:
+                        self.job_ledger.settle(reservation, 0)
+                else:
+                    self.unknown_reserved += reserve
                 self.on_usage(self)
-                if not retryable or attempt == 3:
+                if not retryable or attempt == MAX_ATTEMPTS - 1:
                     raise
                 self.events.write(
                     type="api_retry",
@@ -211,7 +227,7 @@ class OpenRouterGateway(LitellmModel):
                     retry=attempt + 1,
                     error=type(error).__name__,
                 )
-                if self.stop_event.wait(2 ** (attempt + 1)):
+                if self.stop_event.wait(backoff_seconds(attempt)):
                     raise RuntimeError("Trial cancelled") from error
                 continue
             data = response.model_dump(mode="json")
@@ -269,7 +285,7 @@ class OpenRouterGateway(LitellmModel):
             except FormatError as error:
                 record["error"] = "FormatError"
                 error.messages[0].setdefault("extra", {}).update(
-                    cost=float(cost), response=data, origin="harness"
+                    cost=float(cost), response=data, origin="feedback"
                 )
                 if (
                     not response.choices[0].message.tool_calls

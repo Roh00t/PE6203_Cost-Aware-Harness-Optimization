@@ -5,7 +5,8 @@ Uses Harbor's own DatasetConfig (the code path `harbor run -p tasks -i ...`
 takes), so a prefix/glob mismatch or a task Harbor deems invalid is caught
 before any tokens are spent. Must run in the repo environment (which pins the same Harbor as TUA-Bench):
 
-    uv run python scripts/check_harbor_filter.py configs/eval_tasks.args
+    python3 scripts/task_list.py eval --args > /tmp/eval.args   # amended eval list
+    uv run python scripts/check_harbor_filter.py /tmp/eval.args
 """
 
 import asyncio

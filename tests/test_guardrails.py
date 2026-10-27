@@ -99,6 +99,73 @@ class GuardrailCommandTests(unittest.TestCase):
         self.assertEqual(check_command("echo ok", c2_enabled=True).action, "allow")
         self.assertEqual(check_command("cat <<'END'\ncontent\nEND", c2_enabled=True).action, "allow")
 
+    # --- harness-v1.1 fixes (docs/bug_fixes.md) ---------------------------------------------
+
+    def test_recursive_delete_of_roots_in_any_form_bf13(self) -> None:
+        for command in ("rm -rf /app", "rm -r -f /", "rm -f -r /", "rm --recursive --force /",
+                        "rm -rf -- /", "rm -rf ~/*", "rm -rf $HOME/*", 'rm -rf "/"', "rm -rf /*",
+                        "rm -rf --no-preserve-root /", "sudo rm -rf /"):
+            with self.subTest(command=command):
+                self.assertEqual(check_command(command).rule_id, "G-DST-01")
+        for command in ("rm -rf /tmp/build", "rm -rf /app/output", "rm -rf ./build", "rm -f /app/x.txt"):
+            with self.subTest(command=command):
+                self.assertEqual(check_command(command).action, "allow")
+
+    def test_power_commands_only_in_command_position_bf12(self) -> None:
+        for command in ("reboot", "sudo shutdown -h now", "ls; /sbin/reboot", "echo x && halt"):
+            with self.subTest(command=command):
+                self.assertEqual(check_command(command).rule_id, "G-DST-04")
+        for command in ("python3 -c 'import logging; logging.shutdown()'",
+                        "echo 'A reboot is required' > /app/notes.txt",
+                        "cat > s.py <<'EOF'\nex.shutdown(wait=True)\nEOF"):
+            with self.subTest(command=command):
+                self.assertEqual(check_command(command).action, "allow")
+
+    def test_dd_to_pseudo_devices_is_allowed_bf22(self) -> None:
+        self.assertEqual(check_command("dd if=/dev/zero of=/dev/null bs=1 count=1").action, "allow")
+        self.assertEqual(check_command("dd if=x of=/dev/nvme0n1").rule_id, "G-DST-02")
+
+    def test_grader_paths_with_separators_but_not_home_folders_bf15(self) -> None:
+        for command in ("ls /tests;", "cat /tests|head", "ls /solution*", "(cd /oracle)"):
+            with self.subTest(command=command):
+                self.assertEqual(check_command(command).rule_id, "G-INT-01")
+        self.assertEqual(check_command("ls ~/tests").action, "allow")
+
+    def test_log_rule_never_hides_a_block_bf14(self) -> None:
+        self.assertEqual(check_command("echo ${MAX_TOKENS}; vim out.txt", c2_enabled=True).rule_id, "U-INT-01")
+        self.assertEqual(check_command("env; tail -f /var/log/x", c2_enabled=True).rule_id, "U-INT-02")
+        result = check_command("echo $HF_TOKEN && echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT", c2_enabled=True)
+        self.assertEqual((result.rule_id, result.action), ("U-FMT-04", "block"))
+        # Still logged when nothing blocks; only real secret names match.
+        for command in ("echo $HF_TOKEN", "echo $SECRET_KEY", "echo ${OPENROUTER_API_KEY}"):
+            with self.subTest(command=command):
+                self.assertEqual(check_command(command).rule_id, "G-SEC-01")
+        for command in ("echo ${MAX_TOKENS}", "echo $TOKENIZERS_PARALLELISM"):
+            with self.subTest(command=command):
+                self.assertEqual(check_command(command).action, "allow")
+
+    def test_interactive_and_follow_rule_edges_bf22(self) -> None:
+        blocked = {"  vim f": "U-INT-01", "top": "U-INT-01", "top -d 5": "U-INT-01",
+                   "tail -F /var/log/x": "U-INT-02", "tail -n 50 -f x": "U-INT-02",
+                   "journalctl --follow": "U-INT-02", "journalctl -fu nginx": "U-INT-02"}
+        for command, rule_id in blocked.items():
+            with self.subTest(command=command):
+                self.assertEqual(check_command(command, c2_enabled=True).rule_id, rule_id)
+        for command in ("top -b -n 1 | head", "bash watch-files.sh", "timeout 5 tail -f /var/log/x",
+                        "journalctl -n 50 --no-pager", "tail -n 50 app.log"):
+            with self.subTest(command=command):
+                self.assertEqual(check_command(command, c2_enabled=True).action, "allow")
+
+    def test_submit_rule_ignores_heredoc_bodies_and_quotes_bf22(self) -> None:
+        for command in ("cat > /tmp/n.txt <<'EOF'\nCOMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\nEOF",
+                        'echo "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"',
+                        "echo  COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT ",
+                        'bash -c "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"'):
+            with self.subTest(command=command):
+                self.assertEqual(check_command(command, c2_enabled=True).action, "allow")
+        self.assertEqual(check_command("zip -qr out.zip . && echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT",
+                                       c2_enabled=True).rule_id, "U-FMT-04")
+
     def test_extra_tool_calls_are_not_blocked(self) -> None:
         self.assertIsNone(check_extra_tool_calls(1))
         result = check_extra_tool_calls(3)

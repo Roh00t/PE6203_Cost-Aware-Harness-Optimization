@@ -6,7 +6,8 @@ benchmark's `uv run setup-env` downloads them. Without them the oracle and
 every agent fail for reasons unrelated to the harness. This uses the
 benchmark's own target list (repo_env.setup_env.downloaded_data_targets).
 
-    python3 scripts/check_assets.py configs/eval_tasks.args
+    python3 scripts/task_list.py eval --args > /tmp/eval.args   # amended eval list
+    python3 scripts/check_assets.py /tmp/eval.args
 """
 
 import sys

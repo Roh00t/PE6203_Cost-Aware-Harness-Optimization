@@ -1,6 +1,6 @@
 # Harness bug review (harness-v1, eval pass 1)
 
-Roshan, 2026-10-27. This is a report only: no frozen file was changed. Each suspected bug from the code review was checked against the real code in `tests/test_known_issues.py`. Each one is an `xfail(strict=True)` test that asserts the *correct* behaviour, so it is reported as xfailed today and starts failing once the bug is fixed. Next to them are control tests that must keep passing after any fix. Evidence comes from `results/eval/rohit-eval-pass1` (200 scored trials).
+Roshan, 2026-10-27. This is a report only: no frozen file was changed. **Update:** all nine fixes are applied on branch `bug-fixes` as harness-v1.1, pending Rohit's approval; see `docs/bug_fixes.md` (BF-01 to BF-09). Each suspected bug from the code review was checked against the real code in `tests/test_known_issues.py`. Each one is an `xfail(strict=True)` test that asserts the *correct* behaviour, so it is reported as xfailed today and starts failing once the bug is fixed. Next to them are control tests that must keep passing after any fix. Evidence comes from `results/eval/rohit-eval-pass1` (200 scored trials).
 
 Every proposed diff below was applied to a scratch copy of the repository, never to the frozen files. Results on that copy:
 - All 21 xfail tests flip to XPASS(strict).

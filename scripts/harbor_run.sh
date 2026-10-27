@@ -63,6 +63,21 @@ while (($#)); do
     esac
 done
 
+# Arguments after -- reach `harbor run` unchanged, except those that would bypass this script's
+# checks: task selection (the split, --only, CONFIRM_EVAL), concurrency and attempts (the memory
+# check), memory overrides, deletion, verification, and config files that could set any of them.
+for arg in "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"; do
+    case "$arg" in
+        -[pixtdlcnk]|-[pixtdlcnk]?*|--path|--path=*|--include-task-name|--include-task-name=*|\
+        --exclude-task-name|--exclude-task-name=*|--task|--task=*|--dataset|--dataset=*|\
+        --n-tasks|--n-tasks=*|--config|--config=*|--task-git-url|--task-git-url=*|\
+        --task-git-commit|--task-git-commit=*|--registry-url|--registry-url=*|\
+        --registry-path|--registry-path=*|--n-concurrent|--n-concurrent=*|--n-attempts|\
+        --n-attempts=*|--no-delete|--override-memory-mb|--override-memory-mb=*|--disable-verification)
+            die "'$arg' after -- would bypass this script's checks; use --split/--only, N_CONCURRENT or the defaults" ;;
+    esac
+done
+
 [[ "$SPLIT" == "dev" || "$SPLIT" == "eval" || "$SPLIT" == "reserve" ]] \
     || die "--split must be dev, eval or reserve, got '$SPLIT'"
 case "$MODE" in
@@ -150,8 +165,10 @@ RUN_DIR="jobs/$run_id"
 want_sha="$(python3 -c 'import json; print(json.load(open("configs/task_subset.json"))["tua_bench_commit"])')"
 have_sha="$(git -C "$TUA_ROOT" rev-parse HEAD)"
 [[ "$have_sha" == "$want_sha" ]] || die "TUA-Bench at $have_sha, subset was drawn at $want_sha"
-[[ -z "$(git -C "$TUA_ROOT" status --porcelain --untracked-files=no -- tasks dataset.toml)" ]] \
-    || die "TUA-Bench tasks/verifiers have local modifications"
+# Untracked files count too: a new tests/conftest.py would change grading. Downloaded assets
+# are git-ignored, so they don't show up here.
+[[ -z "$(git -C "$TUA_ROOT" status --porcelain --untracked-files=all -- tasks dataset.toml)" ]] \
+    || die "TUA-Bench tasks/verifiers have local modifications or added files"
 if [[ $custom_agent -eq 1 || ( "$agent" != "oracle" && "$agent" != "nop" ) ]]; then
     python3 scripts/check_no_task_leak.py || die "task-leak check failed; refusing to start a paid run"
 fi
@@ -200,24 +217,9 @@ n=0
 for id in "${TASKS[@]}"; do
     n=$((n + 1))
     if [[ -d "$RUN_DIR/$id" ]]; then
-        # finished | errored (every trial raised an exception) | interrupted (job never finished)
-        state="$(python3 - "$RUN_DIR/$id" <<'PYEOF'
-import json, sys
-from pathlib import Path
-job = Path(sys.argv[1])
-try:
-    finished = json.loads((job / "result.json").read_text()).get("finished_at")
-except (OSError, ValueError):
-    finished = None
-trials = [json.loads(p.read_text()) for p in job.glob("*__*/result.json")]
-if not finished:
-    print("interrupted")
-elif trials and all(t.get("exception_info") for t in trials):
-    print("errored")
-else:
-    print("finished")
-PYEOF
-)"
+        # finished | errored (infrastructure exception in every trial) | interrupted. An agent
+        # timeout is a scored outcome, not an error; a damaged result.json means interrupted.
+        state="$(python3 scripts/run_state.py "$RUN_DIR/$id")"
         if [[ " ${RERUN_IDS[*]+${RERUN_IDS[*]}} " == *" $id "* ]]; then
             state="rerun"
         fi

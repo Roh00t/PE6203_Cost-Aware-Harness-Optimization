@@ -48,7 +48,8 @@ def main():
                 start + MAX_LINES - 1,
             )
             selected = []
-            with path.open(encoding="utf-8") as source:
+            # Invalid UTF-8 bytes (Latin-1, a stray BOM byte) show as U+FFFD instead of failing.
+            with path.open(encoding="utf-8", errors="replace") as source:
                 for number, line in enumerate(source, 1):
                     if number < start:
                         continue
@@ -64,11 +65,24 @@ def main():
             path.write_text(args["content"], encoding="utf-8")
             emit(f"Wrote {len(args['content'])} characters to {path}.")
         elif operation == "edit_file":
-            content = path.read_text(encoding="utf-8")
-            count = content.count(args["old"])
+            # newline="" keeps CRLF files CRLF; a snippet sent with \n matches their \r\n.
+            with path.open(encoding="utf-8", newline="") as source:
+                content = source.read()
+            old, new = args["old"], args["new"]
+            if "\r\n" in content and "\n" in old and "\r\n" not in old:
+                old, new = old.replace("\n", "\r\n"), new.replace("\n", "\r\n")
+            first = content.find(old)
+            # find, not count: count misses overlapping matches ("aa" in "aaa").
+            if first < 0:
+                count = 0
+            elif content.find(old, first + 1) < 0:
+                count = 1
+            else:
+                count = max(2, content.count(old))
             if count != 1:
                 emit(f"Expected exactly one match in {path}; found {count}.", 1)
-            path.write_text(content.replace(args["old"], args["new"], 1), encoding="utf-8")
+            with path.open("w", encoding="utf-8", newline="") as target:
+                target.write(content[:first] + new + content[first + len(old):])
             emit(f"Replaced the unique match in {path}.")
         elif operation == "search":
             expression = re.compile(args["pattern"])
@@ -81,12 +95,16 @@ def main():
                 emit(f"Search path does not exist: {search_path}", 1)
             hits = []
             truncated = False
+            unreadable = 0
             for candidate in candidates:
-                if not candidate.is_file():
-                    continue
                 candidate_hits = []
                 try:
-                    with candidate.open(encoding="utf-8") as source:
+                    if not candidate.is_file():
+                        continue
+                    with candidate.open("rb") as raw:
+                        if b"\0" in raw.read(8192):
+                            continue  # binary file
+                    with candidate.open(encoding="utf-8", errors="replace") as source:
                         for number, line in enumerate(source, 1):
                             if expression.search(line):
                                 text = line.rstrip("\r\n")
@@ -95,7 +113,10 @@ def main():
                                 )
                                 if len(candidate_hits) > MAX_HITS - len(hits):
                                     break
-                except UnicodeDecodeError:
+                except OSError:
+                    # One unreadable file (permissions, a vanished temp file) must not
+                    # discard the hits from all the others.
+                    unreadable += 1
                     continue
                 if len(candidate_hits) > MAX_HITS - len(hits):
                     truncated = True
@@ -106,6 +127,8 @@ def main():
             output = "\n".join(hits) if hits else "No matches."
             if truncated:
                 output += f"\nResults capped at {MAX_HITS} hits."
+            if unreadable:
+                output += f"\nSkipped {unreadable} unreadable file(s)."
             emit(output)
         else:
             emit(f"Unknown tool: {operation}", 2)
@@ -310,10 +333,23 @@ class ToolInterface(Hook):
                 "extra": {"origin": "harness", "harness_chars": len(message)},
             }
 
+        try:
+            payload = base64.b64encode(
+                json.dumps({"tool": name, "arguments": clean}, ensure_ascii=False).encode("utf-8")
+            ).decode("ascii")
+        except UnicodeEncodeError:
+            # e.g. an unpaired surrogate from the model: a tool error, not a crashed trial.
+            message = (
+                "Tool arguments must be valid Unicode text (found an unpaired surrogate); "
+                "resend the text without it."
+            )
+            return {
+                "output": message,
+                "returncode": 1,
+                "exception_info": "",
+                "extra": {"origin": "harness", "harness_chars": len(message)},
+            }
         self._ensure_helper()
-        payload = base64.b64encode(
-            json.dumps({"tool": name, "arguments": clean}, ensure_ascii=False).encode("utf-8")
-        ).decode("ascii")
         command = f"python3 {shlex.quote(HELPER_PATH)} {shlex.quote(payload)}"
         result = self.environment.execute({"command": command})
         return {

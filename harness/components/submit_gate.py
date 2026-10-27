@@ -7,8 +7,9 @@ import time
 from harness.hooks import Decision, Hook, RunState, Services
 
 _PATH = re.compile(
-    r"`(?P<quoted>/[^`\n]*\.[A-Za-z0-9]{1,12})`|"
-    r"(?P<bare>(?<![\w:/])/(?:[A-Za-z0-9._+-]+/)*[A-Za-z0-9._+-]+\.[A-Za-z0-9]{1,12}(?![\w]))"
+    r"`(?P<quoted>/[^`\n]*\.[A-Za-z0-9][A-Za-z0-9-]{0,23})`|"
+    # ~/... is skipped: the check runs without the agent's $HOME, so it would always say missing.
+    r"(?P<bare>(?<![\w:/~])/(?:[A-Za-z0-9._+-]+/)*[A-Za-z0-9._+-]+\.[A-Za-z0-9][A-Za-z0-9-]{0,23}(?![\w-]))"
 )
 _MTIME_CHECK = (
     "python3 -c "
@@ -41,30 +42,37 @@ class SubmissionGate(Hook):
         self.trial_started_at = time.time() if trial_started_at is None else trial_started_at
         self.rejections = 0
 
+    def _step_cap(self) -> int:
+        """The step cap exists only with C3; without it there is no 90 % exception."""
+        enabled = getattr(self.config, "enabled", None)
+        if callable(enabled) and not enabled("C3"):
+            return 0
+        return int(getattr(self.config, "step_limit", 0) or 0)
+
     def before_submit(self, action: dict, state: RunState) -> Decision:
-        limit = int(self.config.step_limit)
-        if (
-            self.rejections >= self.max_gate_rejections
-            or limit <= 0
-            or state.step >= 0.9 * limit
+        cap = self._step_cap()
+        if self.rejections >= self.max_gate_rejections or (
+            cap > 0 and state.step >= 0.9 * cap
         ):
             return Decision()
 
         paths = extract_paths(state.task)
-        checks: list[tuple[str, bool]] = []
+        checks: list[tuple[str, bool, bool]] = []
         for path in paths:
             quoted = shlex.quote(path)
+            # rc 0: written during the trial; 1: missing or empty; 2: exists but unchanged.
             command = (
-                f"test -s {quoted} && {_MTIME_CHECK} {quoted} "
-                f"{self.trial_started_at:.6f}"
+                f"test -s {quoted} || exit 1; {_MTIME_CHECK} {quoted} "
+                f"{self.trial_started_at:.6f} || exit 2"
             )
-            result = self.environment.execute({"command": command})
-            checks.append((path, result.get("returncode") == 0))
+            returncode = self.environment.execute({"command": command}).get("returncode")
+            checks.append((path, returncode in (0, 2), returncode == 0))
 
         lines = [
-            f"{'✓' if exists else '✗'} {path} "
-            f"({'exists, non-empty, and written during this trial' if exists else 'missing, empty, or not written during this trial'})"
-            for path, exists in checks
+            f"✓ {path} (exists, non-empty, and written during this trial)" if fresh
+            else f"• {path} (exists but unchanged since the trial started; fine if it is an input)" if exists
+            else f"✗ {path} (missing or empty)"
+            for path, exists, fresh in checks
         ]
         checklist = "\n".join(lines) if lines else "No absolute output file paths were found to check."
         feedback = (

@@ -22,7 +22,7 @@ from harness.components.context import ContextManager
 from harness.components.recovery import FailureRecovery
 from harness.components.submit_gate import SubmissionGate, extract_paths
 from harness.config import load_config
-from harness.gateway import OpenRouterGateway
+from harness.gateway import MAX_ATTEMPTS, OpenRouterGateway
 from harness.guardrails import check_command
 from harness.hooks import RunState, Services
 from harness.isha_adapter import IshaGuardrail
@@ -53,7 +53,6 @@ def state(step: int = 1, components: frozenset[str] = frozenset({"C2", "C4"})) -
 
 # --- 1. U-FMT-03 scans heredoc bodies and quoted strings -----------------------------------------
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#1 U-FMT-03 treats << inside heredoc bodies, strings and arithmetic as heredocs")
 @pytest.mark.parametrize("command", [
     "python3 - <<'PY'\nprint(1 << 3)\nPY",
     "ruby <<'RB'\nitems = []\nitems << 1\nRB",
@@ -77,7 +76,6 @@ def test_unterminated_heredoc_control(command, expected):
 
 # --- 2. U-INT-04 matches .ssh paths and ssh-* tools ----------------------------------------------
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#2 U-INT-04 \\bssh\\b matches ~/.ssh paths and ssh-keygen")
 @pytest.mark.parametrize("command", [
     "ls -la ~/.ssh", "cat /home/user/.ssh/config", "ssh-keygen -t ed25519 -N '' -f /tmp/key"])
 def test_ssh_paths_and_tools_are_not_password_prompts(command):
@@ -93,7 +91,6 @@ def test_ssh_control(command, expected):
 
 # --- 3. U-INT-03 blocks the piped input its own message recommends ------------------------------
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#3 U-INT-03 blocks 'cat script.py | python3' though its message says to pipe input in")
 @pytest.mark.parametrize("command", ["cat script.py | python3", "echo 'print(1)' | python3"])
 def test_piped_interpreter_is_allowed(command):
     assert rule(command) is None
@@ -107,17 +104,14 @@ def test_bare_interpreter_control():
 
 # --- 4. C5 path extraction ------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#4 extract_paths truncates hyphenated extensions")
 def test_hyphenated_extension_is_kept():
     assert extract_paths("Save the workspace as `/app/project.code-workspace`.") == ["/app/project.code-workspace"]
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#4 extract_paths drops the ~ of home-relative paths")
 def test_home_relative_path_is_not_turned_into_a_root_path():
     assert "/Desktop/out.png" not in extract_paths("Save the image to ~/Desktop/out.png.")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#4 C5 reports an unmodified input file as missing")
 def test_gate_does_not_call_an_existing_input_missing(tmp_path):
     class LocalShell:
         """Runs the gate's real check commands against real files in tmp_path."""
@@ -168,12 +162,11 @@ def ok_response():
         usage={"prompt_tokens": 10_000, "completion_tokens": 100})
 
 
-@pytest.mark.xfail(strict=True, raises=CostCapExceeded, reason="#5 each unbilled 429 attempt keeps its full reservation against B_task")
 def test_rate_limited_attempts_do_not_exhaust_the_task_budget(tmp_path):
     rate_limited = litellm.RateLimitError(message="429", model="openai/gpt-oss-20b", llm_provider="openrouter")
-    model = gateway(tmp_path, [rate_limited] * 8 + [ok_response()], budget_usd=0.01)
+    model = gateway(tmp_path, [rate_limited] * (2 * MAX_ATTEMPTS) + [ok_response()], budget_usd=0.01)
     history = [{"role": "user", "content": "x" * 40_000}]  # a mid-trial prompt, about 10k tokens
-    for _ in range(2):  # two steps, each losing all 4 attempts to 429s; nothing is billed
+    for _ in range(2):  # two steps, each losing every attempt to 429s; nothing is billed
         with pytest.raises(litellm.RateLimitError):
             model.query(history)
     assert model.query(history)["extra"]["actions"]
@@ -182,12 +175,12 @@ def test_rate_limited_attempts_do_not_exhaust_the_task_budget(tmp_path):
 def test_server_error_keeps_its_reservation_control(tmp_path):
     """A 5xx may have been billed, so its worst-case reservation must stay (fixed or not)."""
     server_error = litellm.InternalServerError(message="502", model="openai/gpt-oss-20b", llm_provider="openrouter")
-    model = gateway(tmp_path, [server_error] * 4, budget_usd=None)
+    model = gateway(tmp_path, [server_error] * MAX_ATTEMPTS, budget_usd=None)
     history = [{"role": "user", "content": "x" * 40_000}]
     reserve = model.request_reserve(model._prepare_messages_for_api(history))
     with pytest.raises(litellm.InternalServerError):
         model.query(history)
-    assert model.unknown_reserved == 4 * reserve and model.spent == 0
+    assert model.unknown_reserved == MAX_ATTEMPTS * reserve and model.spent == 0
     assert 0.0014 < float(reserve) < 0.0017  # about 1/6 of B_task = $0.01 per failed attempt
 
 
@@ -198,7 +191,6 @@ def guarded(action):
     return HarnessAgent.before_execute(agent, action, state())
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#6 read_file/search/write_file/edit_file skip G-INT-01 (loop.py checks bash only)")
 def test_file_tool_cannot_read_grader_paths():
     assert not guarded({"tool": "read_file", "arguments": {"path": "/tests/test_outputs.py"}}).allowed
 
@@ -218,7 +210,6 @@ def run(hook: FailureRecovery, command: str, returncode: int) -> bool:
     return True
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#7 C4 blocks a polling probe forever, even after the state changed")
 @pytest.mark.parametrize("probe, change", [
     ("test -f /tmp/out.txt", "touch /tmp/out.txt"),
     ("grep -q done /tmp/job.log", "echo done >> /tmp/job.log"),
@@ -240,7 +231,6 @@ def test_repeat_intercept_control():
 
 # --- 8. C1 offload overwrites harness_chars added by C2/C4 ---------------------------------------
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#8 C1 offload replaces earlier harness_chars with the stub length")
 def test_offload_keeps_earlier_harness_chars():
     env = SimpleNamespace(write_text=lambda path, text: None)
     manager = ContextManager(SimpleNamespace(offload_chars=2000), env, Events())
@@ -256,7 +246,6 @@ def status(budget_usd: float) -> str:
     return manager.observation({"output": ""}, state(), 100)["output"]
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="#9 the status line formats B_task with 2 decimals ($0.0167 shows as $0.02)")
 def test_status_line_shows_the_exact_budget():
     assert "/$0.0167 " in status(0.0167)
 

@@ -210,7 +210,8 @@ def test_retry_each_attempt_logged(tmp_path):
     assert [r["retries"] for r in rows] == [0, 1]
     assert rows[0]["prompt_tokens"] is None
     assert not model.usage_complete
-    stop.wait.assert_called_once_with(2)
+    stop.wait.assert_called_once()
+    assert 2 <= stop.wait.call_args.args[0] <= 4  # 4 s with equal jitter (harness-v1.1)
 
 
 def test_budget_refuses_unaffordable_call(tmp_path):
@@ -657,10 +658,12 @@ def test_completed_container_timeout_does_not_poll_forever():
         env = HarborEnvironment(
             Container(), asyncio.get_running_loop(), template_vars={}
         )
-        with pytest.raises(TimeoutError):
-            await asyncio.wait_for(
-                asyncio.to_thread(env.execute, {"command": "printf hello"}), timeout=3
-            )
+        # harness-v1.1 (BF-10): returned promptly as an error observation, like stock.
+        result = await asyncio.wait_for(
+            asyncio.to_thread(env.execute, {"command": "printf hello"}), timeout=3
+        )
+        assert result["returncode"] == -1
+        assert "container transport timed out" in result["exception_info"]
 
     asyncio.run(check())
 

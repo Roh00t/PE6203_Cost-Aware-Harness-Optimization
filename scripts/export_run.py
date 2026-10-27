@@ -17,11 +17,14 @@ from pathlib import Path
 
 MAX_BYTES = 2 * 1024 * 1024
 ARTIFACT_SUFFIXES = {".json", ".txt"}
+# Images, video and model weights are left out anywhere in the run, not only under artifacts/.
+MEDIA_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".xcf",
+                  ".mp4", ".webm", ".avi", ".mov", ".mkv", ".pt", ".onnx", ".safetensors"}
 SECRET_RE = re.compile(rb"AIza[0-9A-Za-z_-]{20,}|sk-or-v1-[0-9a-f]{20,}|sk-[A-Za-z0-9]{20,}")
 
 
 def wanted(rel: Path, size: int) -> bool:
-    if size > MAX_BYTES:
+    if size > MAX_BYTES or rel.suffix.lower() in MEDIA_SUFFIXES:
         return False
     if "artifacts" in rel.parts:
         return rel.suffix in ARTIFACT_SUFFIXES and rel.name not in {"Preferences", "Local State"}
@@ -39,7 +42,8 @@ def main() -> None:
                    check=True, stdout=subprocess.DEVNULL)
 
     files, skipped = [], 0
-    for path in sorted(p for p in src.rglob("*") if p.is_file()):
+    # Symlinks are skipped: copy2 would export whatever they point at (e.g. a host file).
+    for path in sorted(p for p in src.rglob("*") if p.is_file() and not p.is_symlink()):
         rel = path.relative_to(src)
         if wanted(rel, path.stat().st_size):
             files.append(rel)
@@ -55,7 +59,7 @@ def main() -> None:
         shutil.copy2(src / rel, dest / rel)
     size = sum((dest / rel).stat().st_size for rel in files)
     print(f"exported {len(files)} files ({size / 1e6:.1f} MB) to {dest}; skipped {skipped} "
-          f"(browser profiles, images, large files)")
+          f"(browser profiles, images, symlinks, large files)")
 
 
 if __name__ == "__main__":

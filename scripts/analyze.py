@@ -21,6 +21,7 @@ from pathlib import Path
 from statistics import mean
 
 from collect_costs import summarize
+from run_state import OUTCOME_EXCEPTIONS
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIGS = ["B0", "E", "H0", "V", "V-E"] + [f"H0+C{k}" for k in range(6)]
@@ -81,6 +82,7 @@ def load_trial(path: Path, table: dict, families: dict, expected: set[str],
                 "n_unknown_calls": None, "calls": None,
                 "harness_calls_cost_usd": None,
                 "harness_injected_cost_usd_estimate": None,
+                "format_error_feedback_cost_usd_estimate": None,
                 "overhead_estimate_complete": False}
     if log.is_file():
         try:
@@ -103,7 +105,9 @@ def load_trial(path: Path, table: dict, families: dict, expected: set[str],
         raise ValueError(f"Invalid verifier reward in {path}")
     exception = (data.get("exception_info") or {}).get("exception_type")
     finished = bool(data.get("finished_at"))
-    scored = finished and reward is not None and not exception and not archived
+    # An agent timeout is a scored outcome (run_state.py); other exceptions are infrastructure.
+    scored = (finished and reward is not None and not archived
+              and (not exception or exception in OUTCOME_EXCEPTIONS))
     return {
         "config_id": config, "task": task, "family": families[task]["family"],
         "trial": data.get("trial_name", path.parent.name), "reward": reward,
@@ -113,6 +117,7 @@ def load_trial(path: Path, table: dict, families: dict, expected: set[str],
             "calls", "n_unknown_calls", "usage_complete", "known_cost_table_usd",
             "cost_table_usd", "prompt_tokens", "completion_tokens",
             "harness_calls_cost_usd", "harness_injected_cost_usd_estimate",
+            "format_error_feedback_cost_usd_estimate",
             "overhead_estimate_complete", "cost_crosscheck_passed")},
     }
 
@@ -200,6 +205,8 @@ def aggregate(rows: list[dict], expected: set[str], population: dict,
             "known_cost_including_archives_usd": str(decimal_sum(r["known_cost_table_usd"] for r in all_rows)) if all_rows else None,
             "known_harness_calls_cost_usd": str(decimal_sum(r["harness_calls_cost_usd"] for r in active)) if active else None,
             "harness_injected_cost_usd_estimate": str(decimal_sum(r["harness_injected_cost_usd_estimate"] for r in active)) if active else None,
+            # Not harness overhead: the stock loop sends format-error feedback too (BF-34).
+            "format_error_feedback_cost_usd_estimate": str(decimal_sum(r.get("format_error_feedback_cost_usd_estimate") for r in active)) if active else None,
             "overhead_estimate_complete": bool(active) and all(r["overhead_estimate_complete"] for r in active),
             "scored_task_ids": sorted(reward_map), "attempted_task_ids": sorted(attempted),
             "missing_or_unscored_task_ids": sorted(expected - set(reward_map)),

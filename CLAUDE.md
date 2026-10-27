@@ -23,6 +23,8 @@ Guidance for people and coding assistants working on this repository.
 
 **Fourth exception, 2026-10-26 (Rohit, taking over Ulfa's analysis):** `scripts/analyze.py` aborted on archived attempts whose log has no model calls (the crashed B0/E attempts); it now records them as `cost_source = archived_no_calls` (unscored) and keeps the strict error for active trials. `scripts/plot_pareto.py` gains `--lower-bound-policy {exclude,include}`: default `exclude` is Ulfa's original rule; `include` admits lower-bound-cost points to the frontier, still drawn and labelled as lower bounds. **Reporting policy (decided):** report costs with unknown-usage calls as lower bounds and show both plots; all 12 such calls in pass 1 are provider rate-limit rejections (HTTP 429) with no reported cost. New `tests/test_analysis_policies.py`; Ulfa's collector and tests unchanged. Offline: 151 passed. Output: `results/analysis/eval/rohit-eval-pass1/`. Nothing else is unfrozen.
 
+**Fifth exception, 2026-10-27 — PENDING Rohit's approval (branch `bug-fixes`, uncommitted, Roshan): harness-v1.1.** Fixes for all 40 bugs of the whole-repo review, tracked one by one in `docs/bug_fixes.md`: the nine in `docs/harness_bug_review.md`, 13 more in the harness (guardrail false positives and gaps, container-call crashes, the short 429 retry window, C2 encoding and CRLF handling), 11 in the run tooling (resume re-running scored timeouts, `--` arguments bypassing the gates, unchecked fingerprints) and 7 in the results text (the harness-overhead estimate counted stock format-error feedback: V 17 % → 13 %, V-E 16 % → 14 %). Pass-1 results stay harness-v1 and are not rerun; no reward, cost, interval or frontier changes. Touches `harness/**`, `scripts/**`, `tests/**`, `guardrails.md`, `results/**/README.md` and the overhead columns of `results/analysis/eval/rohit-eval-pass1/`. Offline: 277 passed. Merge only with Rohit's approval, then tag `harness-v1.1`.
+
 **Live smoke validation, 2026-10-21 (Rohit, Windows/WSL2, dev tasks 020 and 106, 11 trials, ~$0.021 known + 28 rate-limited calls of unknown cost):** no hangs, no exceptions. C2's file tools used; C4 `repeat_intercept` ×3 and `stall_nudge` ×1; C5 `submit_gate` fired in 4 trials; V-E ran on gpt-oss-120b/Venice and solved 106. Logs are in the WSL clone under `jobs/rohit-c2-smoke`, `jobs/rohit-c245-smoke`, `jobs/rohit-v-smoke` (not exported). Issue #2 is resolved by these two changes.
 
 Verified baseline, 2026-10-20, `main` at `8ad8d05` (PR #1 merged):
@@ -51,7 +53,7 @@ Verified baseline, 2026-10-20, `main` at `8ad8d05` (PR #1 merged):
 
 **Known issues to carry forward:**
 - No B0/H0 parity run yet (planned from the first eval tasks, `docs/RECOVERY_PLAN.md`).
-- Darkbloom (the pinned 20b provider) rate-limits heavily: up to 14 of 36 calls in one smoke trial. The gateway retries 3 times; stagger machine start times and rerun trials that end in infrastructure errors.
+- Darkbloom (the pinned 20b provider) rate-limits heavily: up to 14 of 36 calls in one smoke trial. The gateway retried 3 times in harness-v1 (about 14 s; v1.1 retries for minutes, like stock); stagger machine start times and rerun trials that end in infrastructure errors.
 - gpt-oss-20b still often ends with `RepeatedFormatError` even with C2 (limit 5). That is a result to report, not a bug.
 - Abin's C1/C3 dev runs used a local `need_mb=7000` override on a 7.8 GB Docker VM, and hit Darkbloom rate limits (9 unknown-usage calls per configuration). See `results/dev/c1-c3-dev/README.md`.
 - `docs/tasks.md` §2 still says C2/C4/C5 are not on `main`. They are, since PR #1, and they passed the live smoke test above.
@@ -81,7 +83,8 @@ uv sync --frozen                                         # env: Python 3.12 + ha
 scripts/harbor_run.sh --split dev --mode oracle          # free: reference solutions (dev split)
 scripts/harbor_run.sh --split eval --mode oracle --dry-run   # checks only, prints the Harbor command
 CONFIRM_PAID=1 scripts/harbor_run.sh --split dev -- --agent <agent> --model openrouter/<id>   # paid: ask first
-uv run python scripts/check_harbor_filter.py configs/eval_tasks.args
+python3 scripts/task_list.py eval --args > /tmp/eval.args   # the amended eval list (configs/eval_tasks.args is pre-swap)
+uv run python scripts/check_harbor_filter.py /tmp/eval.args
 python3 scripts/sample_tasks.py --out-dir /tmp/subset-check   # must reproduce the sampled fingerprint
 python3 scripts/task_list.py eval --fingerprint          # must print the final fingerprint above
 docker compose run --rm harness scripts/harbor_run.sh …  # same toolchain in a container

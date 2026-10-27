@@ -61,6 +61,32 @@ def read_calls(path: Path) -> list[dict]:
     return calls
 
 
+def feedback_chars_by_step(trajectory: Path) -> tuple[dict[int, int], int] | None:
+    """Characters of format-error feedback in each step's prompt, rebuilt from a trajectory.
+
+    harness-v1 call logs counted that feedback (stock mini-swe-agent's message in H0, C2's
+    wording otherwise) as harness text; v1.1 logs record it under its own "feedback" origin.
+    A step is one model call: each assistant message or FormatError message, in order. The
+    prompt of step s holds the feedback messages of the steps before s. Returns (chars before
+    each step, total), or None without a trajectory.
+    """
+    if not trajectory.is_file():
+        return None
+    messages = json.loads(trajectory.read_text()).get("messages") or []
+    before: dict[int, int] = {}
+    total = step = 0
+    for message in messages[2:]:
+        feedback = (message.get("role") == "user"
+                    and (message.get("extra") or {}).get("interrupt_type") == "FormatError")
+        if message.get("role") == "assistant" or feedback:
+            step += 1
+            before[step] = total
+        if feedback:
+            # Counted as harness/telemetry.py:origin_counts counts a message.
+            total += len(json.dumps({k: v for k, v in message.items() if k != "extra"}, ensure_ascii=False))
+    return before, total
+
+
 def find_result(path: Path) -> Path | None:
     # Only inspect the trial next to agent/, never the outer job result.
     if path.parent.name == "agent":
@@ -85,8 +111,11 @@ def summarize(log: Path, *, model: str, provider: str,
         raise ValueError("No model calls found; this is not a zero-cost model run")
 
     known = harness_calls = injected_cost = injected_tokens = Decimal("0")
+    feedback_cost = feedback_tokens = largest_call = Decimal("0")
     input_total = output_total = unknown = missing_provider = 0
-    attribution_missing = 0
+    attribution_missing = feedback_unseparated = 0
+    rebuilt = feedback_chars_by_step(log.with_name("mini-swe-agent.trajectory.json")) \
+        if log.suffix == ".jsonl" else None
     for call in calls:
         observed_provider = call.get("provider")
         if observed_provider and observed_provider != provider:
@@ -112,6 +141,7 @@ def summarize(log: Path, *, model: str, provider: str,
         if recorded is not None and abs(cost - money(recorded)) > Decimal("0.000000001"):
             raise ValueError("Recorded call cost does not match token pricing")
         known += cost
+        largest_call = max(largest_call, cost)
         purpose = call.get("purpose") or "agent"
         if purpose.startswith("harness:"):
             harness_calls += cost
@@ -124,11 +154,24 @@ def summarize(log: Path, *, model: str, provider: str,
             ):
                 raise ValueError("Invalid prompt_chars_by_origin")
             total_chars = sum(origins.values())
+            harness_chars = origins.get("harness", 0)
+            if "feedback" in origins:  # harness-v1.1 log
+                feedback_chars = origins["feedback"]
+            elif rebuilt is not None:  # harness-v1 log: move the feedback out of "harness"
+                before, total = rebuilt
+                feedback_chars = min(harness_chars, before.get(call.get("step"), total))
+                harness_chars -= feedback_chars
+            else:
+                feedback_chars = 0
+                feedback_unseparated += 1
             if total_chars:
                 # Separate from harness call cost: these categories may overlap.
-                estimate = Decimal(prompt) * Decimal(origins.get("harness", 0)) / total_chars
+                estimate = Decimal(prompt) * Decimal(harness_chars) / total_chars
                 injected_tokens += estimate
                 injected_cost += estimate * input_rate / Decimal(1000000)
+                feedback = Decimal(prompt) * Decimal(feedback_chars) / total_chars
+                feedback_tokens += feedback
+                feedback_cost += feedback * input_rate / Decimal(1000000)
             elif prompt:
                 attribution_missing += 1
 
@@ -144,7 +187,10 @@ def summarize(log: Path, *, model: str, provider: str,
         recorded = metadata.get("known_cost_table_usd")
         if recorded is not None:
             delta = known - money(recorded)
-            checked = abs(delta) < Decimal("0.01")
+            # A call still in flight when Harbor cancelled the trial is logged after result.json
+            # was written, so the log may exceed the recorded total by at most one call.
+            rounding = Decimal("0.000000001")
+            checked = -rounding <= delta <= largest_call + rounding
             if not checked:
                 raise ValueError(f"Trial known cost mismatch: difference {delta} USD")
         flag = metadata.get("usage_complete")
@@ -171,9 +217,13 @@ def summarize(log: Path, *, model: str, provider: str,
         "harness_calls_cost_usd": str(harness_calls),
         "harness_injected_prompt_tokens_estimate": str(injected_tokens),
         "harness_injected_cost_usd_estimate": str(injected_cost),
+        "format_error_feedback_prompt_tokens_estimate": str(feedback_tokens),
+        "format_error_feedback_cost_usd_estimate": str(feedback_cost),
+        "format_error_feedback_separated": feedback_unseparated == 0,
         "calls_without_prompt_attribution": attribution_missing,
         "overhead_estimate_complete": complete and attribution_missing == 0,
-        "overhead_policy": "Character-share input estimate; do not add overlapping overhead categories",
+        "overhead_policy": ("Character-share input estimate; do not add overlapping overhead categories. "
+                            "Format-error feedback (sent by the stock loop too) is not harness overhead"),
         "calls_without_recorded_provider": missing_provider,
         "pricing_snapshot": table["snapshot_date"],
         "cache_policy": "All prompt tokens charged at listed input rate",

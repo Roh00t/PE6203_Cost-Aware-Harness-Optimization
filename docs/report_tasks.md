@@ -47,14 +47,14 @@ Sources: [`results/eval/rohit-eval-pass1/README.md`](../results/eval/rohit-eval-
 
 | Config | Component | Mean reward | Δ vs H0 (95 % CI) | Cost per run | Model calls |
 |---|---|---|---|---|---|
-| H0+C0 | Task-appropriate prompt | 0.166 (38 tasks) | +0.046 (0.000 to +0.110), no losses | ≈ $0.0126 (38 tasks) | 247 |
+| H0+C0 | Task-appropriate prompt | 0.166 (38 tasks) | +0.046 (0.000 to +0.110), paired on its 38 tasks (H0: 0.120 there), no losses | ≥ $0.0126 (38 tasks) | 247 (H0: 470 on the same 38 tasks) |
 | H0+C1 | Context management | 0.079 | −0.052 (−0.143 to +0.029) | ≥ $0.0307 | 486 |
 | H0+C2 | Tool interface + validation | 0.176 | +0.046 (−0.046 to +0.137) | ≥ $0.0763 | 945 |
 | H0+C3 | Budget caps + awareness | 0.143 | +0.013 (−0.041 to +0.079) | $0.0307 | 487 |
 | H0+C4 | Failure recovery | 0.118 | −0.012 (−0.092 to +0.063) | $0.0379 | 548 |
 | H0+C5 | Pre-submission gate | 0.106 | −0.024 (−0.129 to +0.083) | $0.0444 | 564 |
 
-**Cost breakdown.** Harness-made model calls: none ($0). Harness-injected prompt text (status lines, nudges, recovery and gate messages), estimated by character share: V ≈ $0.0082 per run (17 % of its cost), V-E ≈ $0.0151 (16 %), ablations $0.0007–$0.0047. Unknown-cost calls (all HTTP 429 rate-limit rejections): H0 3, V 2, V-E 7, H0+C0 1, H0+C1 3, H0+C2 2.
+**Cost breakdown.** Harness-made model calls: none ($0). Harness-injected prompt text (status lines, nudges, recovery and gate messages), estimated by character share: V ≈ $0.0061 per run (13 % of its cost), V-E ≈ $0.0126 (14 %), ablations $0–$0.0015 (H0 and H0+C0: $0). Format-error feedback, which the stock loop sends too, is not harness overhead and is reported separately: V ≈ $0.0021, V-E ≈ $0.0025. (Corrected 2026-10-27, `docs/bug_fixes.md` BF-34; the first figures, 17 % and 16 %, counted that feedback as harness text.) Unknown-cost calls (all HTTP 429 rate-limit rejections): H0 3, V 2, V-E 7, H0+C0 1, H0+C1 3, H0+C2 2.
 
 **Pareto frontier** (`pareto_include_lower_bounds.png`, lower-bound costs admitted and labelled): B0 → H0+C3 → V → E → H0+C2 → V-E. Strict version (`pareto.png`): B0, H0+C3, E.
 
@@ -64,7 +64,7 @@ Sources: [`results/eval/rohit-eval-pass1/README.md`](../results/eval/rohit-eval-
 1. Our full harness on the cheap model (V) clearly beats the default harness on the same model (B0) and matches the expensive model on the default harness (E) at a lower cost per run.
 2. Weighted to the full benchmark's family mix, V (0.143) is ahead of E (0.116): E only succeeds in Scientific and Multimedia tasks.
 3. The harness gain does **not** shrink with a stronger model: V-E − E (+0.091) is larger than V − B0 (+0.075).
-4. The prompt (C0) is the clearest single gain and halves model calls; tool interface (C2) gains as much but doubles cost; context management (C1) hurts; components overlap rather than add up.
+4. The prompt (C0) is the clearest single gain and halves model calls; tool interface (C2) gains as much but doubles cost; context management (C1) hurts; the full harness gains less than C0 or C2 alone, so the positive components overlap. Only C0's interval excludes zero, and only just.
 5. gpt-oss models often answer in plain text instead of calling a tool; that format failure dominates the default harness's losses and is what C0 and C2 target.
 
 ## Report outline and owners
@@ -157,14 +157,14 @@ Everyone also prepares one or two likely Q&A questions about their own part.
 **By Wed 28 Oct, 23:59:** §7, §9.1, Appendix A; slides 9 and 10.
 
 **Prompt for Claude:**
-> Read docs/report_tasks.md, results/analysis/eval/rohit-eval-pass1/ablations.csv, results/eval/rohit-eval-pass1/README.md, scripts/classify_failures.py, results/eval/rohit-eval-pass1/failures/summary.csv and trials_classified.csv. Draft report §7 "Component ablation" (the ablation table from the fact sheet plus about 350 words of reading), §9.1 "Failure classification" (classes, counts per configuration, harness-level vs model-level, about 400 words) and Appendix A "Reproduction" (commands, configs, where the logs are). Then draft slides 9 and 10 with speaker notes.
+> Read docs/report_tasks.md, results/analysis/eval/rohit-eval-pass1/ablations.csv, results/eval/rohit-eval-pass1/README.md, scripts/classify_failures.py, results/analysis/eval/rohit-eval-pass1/failures/summary.csv and trials_classified.csv. Draft report §7 "Component ablation" (the ablation table from the fact sheet plus about 350 words of reading), §9.1 "Failure classification" (classes, counts per configuration, harness-level vs model-level, about 400 words) and Appendix A "Reproduction" (commands, configs, where the logs are). Then draft slides 9 and 10 with speaker notes.
 
 ## Asmitha
 
 **By Wed 28 Oct, 23:59:** §9.2, §10, Appendix C (`docs/guardrails_framework_mapping.md` content); slides 11 and 12.
 
 **Prompt for Claude:**
-> Read docs/report_tasks.md, results/eval/rohit-eval-pass1/failures/examples.md, docs/failure_catalog_inputs.md, results/eval/rohit-eval-pass1/README.md, guardrails.md §8 and the lecture notes docs/Week08_Tools.md, docs/Week10_Harness.md, docs/Week12_Industry_Applications.md. Draft report §9.2 "Example trajectories" (at least one harness-level and one model-level example, each with task, configuration, what happened step by step and why it failed, about 450 words), §10 "Discussion" (which components account for most of the gain; whether the gain shrinks with the stronger model: compare V − B0 with V-E − E; about 450 words) and Appendix C (each guardrail rule mapped to the lecture frameworks and OWASP 2025). Then draft slides 11 and 12 with speaker notes.
+> Read docs/report_tasks.md, results/analysis/eval/rohit-eval-pass1/failures/examples.md, docs/failure_catalog_inputs.md, results/eval/rohit-eval-pass1/README.md, guardrails.md §8 and the lecture notes docs/Week08_Tools.md, docs/Week10_Harness.md, docs/Week12_Industry_Applications.md. Draft report §9.2 "Example trajectories" (at least one harness-level and one model-level example, each with task, configuration, what happened step by step and why it failed, about 450 words), §10 "Discussion" (which components account for most of the gain; whether the gain shrinks with the stronger model: compare V − B0 with V-E − E; about 450 words) and Appendix C (each guardrail rule mapped to the lecture frameworks and OWASP 2025). Then draft slides 11 and 12 with speaker notes.
 
 ---
 

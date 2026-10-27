@@ -8,6 +8,7 @@ from minisweagent.exceptions import LimitsExceeded, TimeExceeded
 
 from harness.components.budget import BudgetManager
 from harness.components.context import ContextManager, estimate_tokens
+from harness.guardrails import check_command
 from harness.hooks import Decision, RunState
 
 
@@ -82,28 +83,41 @@ class HarnessAgent(DefaultAgent):
     def before_execute(self, action, state):
         if action.get("tool", "bash") == "bash":
             decision = self.guardrail.before_execute(action, state)
-            if decision.event or decision.rule_id:
-                self.events.write(
-                    type=decision.event
-                    or ("guardrail_block" if not decision.allowed else "guardrail_log"),
-                    step=state.step,
-                    rule_id=decision.rule_id,
-                    command=str(action.get("command", ""))[:500],
+            checked = str(action.get("command", ""))
+        else:
+            # File tools have no command; their path still goes through the always-on G rules.
+            checked = str((action.get("arguments") or {}).get("path", ""))
+            result = check_command(checked, c2_enabled=False)
+            decision = Decision(
+                allowed=not result.blocked,
+                feedback=result.message or "",
+                rule_id=result.rule_id,
+                event=("guardrail_block" if result.blocked else "guardrail_log")
+                if result.rule_id
+                else None,
+            )
+        if decision.event or decision.rule_id:
+            self.events.write(
+                type=decision.event
+                or ("guardrail_block" if not decision.allowed else "guardrail_log"),
+                step=state.step,
+                rule_id=decision.rule_id,
+                command=checked[:500],
+            )
+        if not decision.allowed:
+            self.guardrail_blocks += 1
+            if self.guardrail_blocks >= 10:
+                raise LimitsExceeded(
+                    {
+                        "role": "exit",
+                        "content": "GuardrailLimit",
+                        "extra": {
+                            "exit_status": "GuardrailLimit",
+                            "submission": "",
+                        },
+                    }
                 )
-            if not decision.allowed:
-                self.guardrail_blocks += 1
-                if self.guardrail_blocks >= 10:
-                    raise LimitsExceeded(
-                        {
-                            "role": "exit",
-                            "content": "GuardrailLimit",
-                            "extra": {
-                                "exit_status": "GuardrailLimit",
-                                "submission": "",
-                            },
-                        }
-                    )
-                return decision
+            return decision
         for hook in self.hooks:
             decision = hook.before_execute(action, state)
             if not decision.allowed:
@@ -167,7 +181,8 @@ class HarnessAgent(DefaultAgent):
             )
         for index, action in enumerate(actions):
             state = self.state()
-            if c2_extra_calls and index > 0:
+            ignored = bool(c2_extra_calls) and index > 0
+            if ignored:
                 feedback = (
                     "BLOCKED: this extra tool call was ignored; send one command per response."
                 )
@@ -232,7 +247,8 @@ class HarnessAgent(DefaultAgent):
                     "output": output + separator + note,
                     "extra": extra,
                 }
-            outputs.append(self.after_execute(action, result, state))
+            # An ignored call never ran: no C4 stall counting, no C1 offload, no C3 status line.
+            outputs.append(result if ignored else self.after_execute(action, result, state))
         return self.add_messages(
             *self.model.format_observation_messages(
                 message, outputs, self.get_template_vars()

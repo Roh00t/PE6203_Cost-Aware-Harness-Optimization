@@ -161,11 +161,34 @@ def build_command(config: Config, split: str, task: str, run_name: str,
     return cmd
 
 
+def run_child(cmd: list[str], env: dict, grace_s: float = 60.0) -> int:
+    """Run harbor_run.sh; on Ctrl+C let it finish its INT trap instead of killing it.
+
+    subprocess.run would SIGKILL the child 0.25 s after KeyboardInterrupt, before its trap
+    runs, and leave Harbor tearing down on its own while the runner exits. The terminal's
+    Ctrl+C reaches the child's process group anyway, so wait for it; terminate only if it
+    hangs past grace_s.
+    """
+    child = subprocess.Popen(cmd, cwd=ROOT, env=env)
+    try:
+        return child.wait()
+    except KeyboardInterrupt:
+        try:
+            child.wait(timeout=grace_s)
+        except subprocess.TimeoutExpired:
+            child.terminate()
+            child.wait()
+        return 130
+
+
 def trial_outcome(job_dir: Path) -> dict:
     """Reward and exception of the newest finished trial in a per-task Harbor job."""
     trials = sorted((p for p in job_dir.glob("*__*/result.json")), key=lambda p: p.stat().st_mtime)
     for path in reversed(trials):
-        result = json.loads(path.read_text())
+        try:
+            result = json.loads(path.read_text())
+        except (OSError, ValueError):  # killed mid-write: not a finished trial
+            continue
         if result.get("finished_at"):
             return {
                 "trial": result.get("trial_name"),
@@ -238,10 +261,7 @@ def main() -> int:
             if args.dry_run:
                 continue
             started = time.monotonic()
-            try:
-                code = subprocess.run(cmd, cwd=ROOT, env=env).returncode
-            except KeyboardInterrupt:
-                code = 130
+            code = run_child(cmd, env)
             record = {
                 "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "run": args.run_name, "split": args.split, "task": task,

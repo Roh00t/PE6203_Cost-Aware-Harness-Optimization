@@ -82,8 +82,8 @@ def main() -> None:
     if args.expect_sha and tua_sha != args.expect_sha:
         sys.exit(f"TUA-Bench is at {tua_sha}, expected {args.expect_sha}. "
                  f"Run: git -C {args.tua_root} checkout {args.expect_sha}")
-    # Tracked-file changes would mean modified tasks or verifiers.
-    dirty = git(args.tua_root, "status", "--porcelain", "--untracked-files=no", "--", "tasks", "dataset.toml")
+    # Changed or added files would mean modified tasks or verifiers (assets are git-ignored).
+    dirty = git(args.tua_root, "status", "--porcelain", "--untracked-files=all", "--", "tasks", "dataset.toml")
     if dirty and not args.allow_dirty:
         sys.exit(f"TUA-Bench tasks have local modifications (verifiers must be unmodified):\n{dirty}")
 

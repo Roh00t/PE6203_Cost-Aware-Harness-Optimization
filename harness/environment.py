@@ -18,6 +18,14 @@ SAFE_ENV = {
 MAX_OUTPUT = 1024 * 1024
 
 
+class TrialCancelled(RuntimeError):
+    """Harbor stopped the trial; never turned into an observation."""
+
+
+class LoopThreadError(RuntimeError):
+    """A container call from the event-loop thread (issue #2); a programming error."""
+
+
 class HarborEnvironment:
     def __init__(
         self,
@@ -38,7 +46,7 @@ class HarborEnvironment:
     def _wait(self, coroutine):
         if self.stop_event.is_set():
             coroutine.close()
-            raise RuntimeError("Trial cancelled")
+            raise TrialCancelled("Trial cancelled")
         try:
             running = asyncio.get_running_loop()
         except RuntimeError:
@@ -47,7 +55,7 @@ class HarborEnvironment:
             # Blocking here would stop the loop that must run the coroutine: a silent hang
             # that also disables Harbor's agent timeout (issue #2). Fail loudly instead.
             coroutine.close()
-            raise RuntimeError(
+            raise LoopThreadError(
                 "container call on the event-loop thread would deadlock; "
                 "call it from the agent worker thread"
             )
@@ -64,7 +72,7 @@ class HarborEnvironment:
                         raise
                     if self.stop_event.is_set():
                         future.cancel()
-                        raise RuntimeError("Trial cancelled")
+                        raise TrialCancelled("Trial cancelled")
         finally:
             with self.lock:
                 self.pending.discard(future)
@@ -94,14 +102,33 @@ class HarborEnvironment:
             + shlex.quote(inner)
         )
         wrapped += " | python3 -c " + shlex.quote(drain) + "; exit ${PIPESTATUS[0]}"
-        result = self._wait(
-            self.environment.exec(
-                command=wrapped,
-                cwd=cwd or None,
-                env=dict(SAFE_ENV),
-                timeout_sec=(timeout or self.timeout) + 15,
+        try:
+            result = self._wait(
+                self.environment.exec(
+                    command=wrapped,
+                    cwd=cwd or None,
+                    env=dict(SAFE_ENV),
+                    timeout_sec=(timeout or self.timeout) + 15,
+                )
             )
-        )
+        except (TrialCancelled, LoopThreadError):
+            raise
+        except Exception as error:
+            if self.stop_event.is_set():  # a cancelled future surfaces as CancelledError
+                raise TrialCancelled("Trial cancelled") from error
+            # Like stock mini-swe-agent: a failed container call is an observation, not a
+            # crash. The usual cause is a background job holding the output pipe open.
+            message = (
+                f"[Harness] The container call failed ({type(error).__name__}: {error}). "
+                "If you started a background process, redirect its output: "
+                "`nohup CMD > /tmp/job.log 2>&1 &`."
+            )
+            return {
+                "output": message,
+                "returncode": -1,
+                "exception_info": f"{type(error).__name__}: {error}",
+                "extra": {"origin": "harness", "harness_chars": len(message)},
+            }
         output = {
             "output": (result.stdout or "") + (result.stderr or ""),
             "returncode": result.return_code,

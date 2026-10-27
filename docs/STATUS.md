@@ -199,10 +199,14 @@ Then put **your own** `OPENROUTER_API_KEY` (created with a credit limit) in `.en
 
 ### Step 4: Check the setup
 
-All four must print `OK`:
+All four must print `OK`. The eval checks use the amended list (`configs/eval_tasks.args` is the pre-swap sample):
 
 ```bash
-python3 scripts/check_assets.py configs/eval_tasks.args
+python3 scripts/task_list.py eval --args > /tmp/eval.args
+```
+
+```bash
+python3 scripts/check_assets.py /tmp/eval.args
 ```
 
 ```bash
@@ -210,7 +214,7 @@ python3 scripts/check_assets.py configs/dev_tasks.args
 ```
 
 ```bash
-uv run python scripts/check_harbor_filter.py configs/eval_tasks.args
+uv run python scripts/check_harbor_filter.py /tmp/eval.args
 ```
 
 ```bash
