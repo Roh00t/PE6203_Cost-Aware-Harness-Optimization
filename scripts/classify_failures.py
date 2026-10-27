@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RUN = ROOT / "results" / "eval" / "rohit-eval-pass1"
 FAMILIES = ROOT / "configs" / "task_families.json"
 ARCHIVED = re.compile(r"\.(errored|interrupted|rerun)-\d")
+STOCK_TIMEOUT_S = 30  # mini-swe-agent's command timeout; harness trials log theirs in trial_start
 
 # --- Taxonomy (owner: Isha). Edit here; tests/test_classify_failures.py pins the behaviour. ---
 # A trial with reward == 1 is "success". Otherwise every rule below is tested against it: the
@@ -148,18 +149,20 @@ def first_line(text: str, width: int) -> str:
     return line[:width] + ("…" if len(line) > width else "")
 
 
-def trajectory_steps(messages: list[dict]) -> tuple[list[Step], int, bool]:
+def trajectory_steps(messages: list[dict], timeout_s: float = STOCK_TIMEOUT_S) -> tuple[list[Step], int, bool]:
     """One step per model call (command or format error, plus observation), the format-error
     count, and whether the last command timeout was never followed by a successful command."""
     steps: list[Step] = []
     format_errors = 0
     last_timeout = None
     last_success = None
+    sent_at = None
     for message in messages:
         extra = message.get("extra") or {}
         role = message.get("role")
         text = str(extra.get("raw_output", message.get("content", "")))
         if role == "assistant":
+            sent_at = extra.get("timestamp")
             commands = [str(a["command"]) if "command" in a
                         else f"{a.get('tool')}({json.dumps(a.get('arguments'), sort_keys=True)})"
                         for a in extra.get("actions") or []]
@@ -173,7 +176,11 @@ def trajectory_steps(messages: list[dict]) -> tuple[list[Step], int, bool]:
         elif role in ("tool", "user") and steps:
             steps[-1].output += ("\n" if steps[-1].output else "") + text
             if role == "tool" and "timed out" in str(extra.get("exception_info", "")).lower():
-                last_timeout = len(steps)
+                # The harness reports every rc 124/137 as "timed out or was killed"; a command
+                # that killed its own shell (pkill -f) returns at once, so only count long runs.
+                took = (extra.get("timestamp") or 0) - (sent_at or 0)
+                if not (sent_at and extra.get("timestamp")) or took >= 0.9 * timeout_s:
+                    last_timeout = len(steps)
             elif role == "tool" and extra.get("returncode") == 0:
                 last_success = len(steps)
     unrecovered = last_timeout is not None and (last_success or 0) <= last_timeout
@@ -195,9 +202,10 @@ def load_trial(config: str, task: str, path: Path, archived: bool) -> Trial:
     metadata = (result.get("agent_result") or {}).get("metadata") or {}
     trial.exit_status = str(info.get("exit_status") or metadata.get("exit_status") or "")
     trial.n_steps = int((info.get("model_stats") or {}).get("api_calls") or 0)
-    trial.steps, trial.n_format_errors, trial.timeout_unrecovered = trajectory_steps(
-        trajectory.get("messages") or [])
     events = read_events(path / "agent" / "events.jsonl")
+    start = next((e for e in events if e.get("type") == "trial_start"), {})
+    trial.steps, trial.n_format_errors, trial.timeout_unrecovered = trajectory_steps(
+        trajectory.get("messages") or [], float(start.get("command_timeout") or STOCK_TIMEOUT_S))
     trial.blocks = [e for e in events if e.get("type") == "guardrail_block"]
     trial.cap_reached = any(e.get("type") == "cap_reached" for e in events)
     try:

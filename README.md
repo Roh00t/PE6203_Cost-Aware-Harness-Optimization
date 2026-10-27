@@ -145,6 +145,7 @@ Notes:
 
 * `data/` is git-ignored. Everyone builds their own copy with the commands above, and nobody commits it.
 * `setup-env` downloads about 0.9 GB (Hugging Face, NREL S3, Google Drive) into 14 task folders. It never changes tracked task or verifier files.
+* **macOS: `python3` must be 3.10 or newer.** The scripts (and `harbor_run.sh`, which calls `python3` directly) need Python 3.10+, but macOS's `/usr/bin/python3` is 3.9: `sample_tasks.py` fails on `import tomllib` and `harbor_run.sh` ends with exit 1 in `summarize_run.py` even when every trial passed. Either prefix commands with `uv run --frozen` (it puts the project's 3.12 first on `PATH`), e.g. `uv run --frozen bash scripts/harbor_run.sh …`, or put Homebrew's 3.12 first in `~/.zprofile`: `export PATH="/opt/homebrew/opt/python@3.12/libexec/bin:$PATH"`.
 * No need to activate `.venv`. `uv run` picks the right environment. If it *is* active, `uv` prints a harmless `VIRTUAL_ENV … does not match` warning inside `data/TUA-Bench`.
 
 ---
